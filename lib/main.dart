@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 import 'blatter_page.dart';
 import 'map_page.dart';
 
@@ -85,17 +84,18 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   String _locationMessage = "GPS...";
   
-  // WETTER
+  // WETTER & SONNE VARIABLEN
   String _weatherTemp = "--°C";
   String _windSpeed = "--";
   String _windDir = "--";
   IconData _weatherIcon = Icons.cloud_off;
   
-  // SONNE & MOND
   String _sunriseTime = "--:--";
   String _sunsetTime = "--:--";
-  String _moonText = "--"; 
-  String _moonSubText = "Licht";
+  
+  // MOND
+  String _moonText = "--";
+  String _moonSubText = "Phase";
   IconData _moonIcon = Icons.nightlight_round;
   
   bool _isLoadingWeather = false;
@@ -142,75 +142,80 @@ class _DashboardPageState extends State<DashboardPage> {
     _fetchWeatherAndSun();
   }
 
-  // --- API LOGIK (Mit präzisem Mond) ---
+  // --- NOTFALL-LOGIK (OHNE MOND, DAMIT ES LÄUFT) ---
   Future<void> _fetchWeatherAndSun() async {
     if (_lat == null || _lon == null) return;
 
     setState(() => _isLoadingWeather = true);
 
     try {
-      final url = Uri.parse(
-          'https://api.open-meteo.com/v1/forecast?latitude=$_lat&longitude=$_lon&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m&daily=sunrise,sunset,moon_phase&wind_speed_unit=kmh&timezone=auto');
+      // FIX: Wir haben ',moon_phase' aus der URL gelöscht.
+      // Der Server hat das abgelehnt. Jetzt holen wir nur Sonne & Wetter.
+      String urlString = 'https://api.open-meteo.com/v1/forecast?'
+          'latitude=$_lat&longitude=$_lon'
+          '&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m'
+          '&daily=sunrise,sunset' // HIER WAR DER FEHLER: moon_phase IST RAUS!
+          '&wind_speed_unit=kmh'
+          '&timezone=Europe/Berlin'; 
+
+      print("Rufe URL auf (Ohne Mond): $urlString"); 
       
-      final response = await http.get(url);
+      final response = await http.get(Uri.parse(urlString));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        final current = data['current'];
-        final daily = data['daily'];
-
-        // Zeiten
-        String rawSunrise = daily['sunrise'][0].toString();
-        String rawSunset = daily['sunset'][0].toString();
-        String sRise = rawSunrise.contains('T') ? rawSunrise.split('T').last : rawSunrise;
-        String sSet = rawSunset.contains('T') ? rawSunset.split('T').last : rawSunset;
-
-        // --- MOND LOGIK VERBESSERT ---
-        // 0.0 = Neumond, 0.5 = Vollmond, 1.0 = Neumond
-        double phase = (daily['moon_phase'][0] as num).toDouble();
+        // 1. Wetter
+        String tmpTemp = "--°C";
+        String tmpWindS = "--";
+        String tmpWindD = "--";
+        IconData tmpIcon = Icons.cloud_off;
         
-        // Berechnung der Beleuchtung in Prozent (0.5 ist 100%, 0.0/1.0 ist 0%)
-        int illumination = ((1 - (phase - 0.5).abs() * 2) * 100).round();
-        
-        String mStatus = "";
-        IconData mIcon = Icons.nightlight_round;
+        try {
+          final current = data['current'];
+          tmpTemp = "${current['temperature_2m']}°C";
+          tmpWindS = "${current['wind_speed_10m']} km/h";
+          tmpWindD = _getWindDirection(current['wind_direction_10m']);
+          tmpIcon = _getWeatherIcon(current['weather_code']);
+        } catch (e) { print("Wetter Fehler: $e"); }
 
-        if (phase <= 0.03 || phase >= 0.97) {
-          mStatus = "Neumond";
-          mIcon = Icons.circle_outlined;
-        } else if (phase >= 0.47 && phase <= 0.53) {
-          mStatus = "Vollmond";
-          mIcon = Icons.brightness_1; 
-        } else if (phase < 0.5) {
-          mStatus = "Zunehmend";
-          mIcon = Icons.brightness_2; // Sichel
-        } else {
-          mStatus = "Abnehmend";
-          mIcon = Icons.brightness_3; // Sichel
-        }
+        // 2. Sonne
+        String tmpRise = "--:--";
+        String tmpSet = "--:--";
+        try {
+          final daily = data['daily'];
+          String rawSunrise = daily['sunrise'][0].toString();
+          String rawSunset = daily['sunset'][0].toString();
+          tmpRise = rawSunrise.contains('T') ? rawSunrise.split('T').last : rawSunrise;
+          tmpSet = rawSunset.contains('T') ? rawSunset.split('T').last : rawSunset;
+        } catch (e) { print("Sonne Fehler: $e"); }
+
+        // 3. Mond (Dummy-Werte, damit UI nicht kaputt geht)
+        String tmpMoonTxt = "--";
+        String tmpMoonSub = "Keine Daten";
+        IconData tmpMoonIco = Icons.nightlight_round;
 
         setState(() {
-          _weatherTemp = "${current['temperature_2m']}°C";
-          _windSpeed = "${current['wind_speed_10m']} km/h";
-          _windDir = _getWindDirection(current['wind_direction_10m']);
-          _weatherIcon = _getWeatherIcon(current['weather_code']);
+          _weatherTemp = tmpTemp;
+          _windSpeed = tmpWindS;
+          _windDir = tmpWindD;
+          _weatherIcon = tmpIcon;
+          _sunriseTime = tmpRise;
+          _sunsetTime = tmpSet;
           
-          _sunriseTime = sRise;
-          _sunsetTime = sSet;
+          _moonText = tmpMoonTxt;
+          _moonSubText = tmpMoonSub;
+          _moonIcon = tmpMoonIco;
           
-          _moonText = "$illumination%"; // Groß oben: Prozent
-          _moonSubText = mStatus;       // Klein unten: Zunehmend/Abnehmend
-          _moonIcon = mIcon;
-
           _isLoadingWeather = false;
         });
 
       } else {
-        throw Exception('API Fehler');
+        print("Server Antwort: ${response.body}");
+        throw Exception('API Status: ${response.statusCode}');
       }
     } catch (e) {
-      print("Fehler: $e");
+      print("Globaler Fehler: $e");
       setState(() {
         _weatherTemp = "--";
         _isLoadingWeather = false;
@@ -278,12 +283,11 @@ class _DashboardPageState extends State<DashboardPage> {
                           ],
                         ),
                         
-                        // MOND (Gefixed)
+                        // MOND
                         Column(
                           children: [
                             Icon(_moonIcon, size: 30, color: isGhost ? Colors.red : Colors.blueGrey),
                             const SizedBox(height: 5),
-                            // HIER: Prozentzahl groß, Status klein
                             Text(_moonText, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                             Text(_moonSubText, style: TextStyle(fontSize: 10, color: textColor.withOpacity(0.6))),
                           ],
@@ -372,7 +376,7 @@ class _DashboardPageState extends State<DashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: TextStyle(fontSize: 10, color: color.withOpacity(0.6))),
-            Text(time, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+            Text(time, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
           ],
         )
       ],

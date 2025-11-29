@@ -1,7 +1,5 @@
-import 'dart:async'; // Für den SOS Timer
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math; // Für die Kompass-Drehung
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -13,8 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter_compass/flutter_compass.dart'; // NEU: Kompass
-import 'package:torch_light/torch_light.dart'; // NEU: Taschenlampe
+import 'package:image_picker/image_picker.dart'; // NEU: Für die Kamera
 
 class MapPage extends StatefulWidget {
   final bool isGhostMode;
@@ -37,118 +34,22 @@ class _MapPageState extends State<MapPage> {
   List<LatLng> _trackingPath = [];
   List<Marker> _trackingMarkers = [];
 
-  // --- HARDWARE VARIABLEN ---
-  bool _isTorchOn = false;
-  bool _isSosActive = false;
-  bool _hasHardware = false; // Check ob wir auf Handy sind
+  // Für das Foto im Dialog
+  XFile? _tempImage;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
     _locateUser();
     _loadEntries();
-    // Prüfen ob wir auf einem Handy sind (Windows hat keine Taschenlampe)
-    _hasHardware = Platform.isAndroid || Platform.isIOS;
   }
 
-  @override
-  void dispose() {
-    // Sicherstellen, dass Licht ausgeht wenn man die Seite verlässt
-    if (_hasHardware && (_isTorchOn || _isSosActive)) {
-      _stopTorch();
-    }
-    super.dispose();
-  }
-
-  // --- TASCHENLAMPE & SOS LOGIK ---
-  
-  Future<void> _toggleTorch() async {
-    if (!_hasHardware) return;
-    try {
-      if (_isSosActive) {
-        // Wenn SOS an ist, beenden wir es erst
-        setState(() => _isSosActive = false);
-        await TorchLight.disableTorch();
-        setState(() => _isTorchOn = false);
-        return;
-      }
-
-      if (_isTorchOn) {
-        await TorchLight.disableTorch();
-      } else {
-        await TorchLight.enableTorch();
-      }
-      setState(() {
-        _isTorchOn = !_isTorchOn;
-      });
-    } catch (e) {
-      _showSnack("Lampe nicht verfügbar: $e");
-    }
-  }
-
-  Future<void> _stopTorch() async {
-    try {
-      setState(() {
-        _isTorchOn = false;
-        _isSosActive = false;
-      });
-      await TorchLight.disableTorch();
-    } catch (e) { print(e); }
-  }
-
-  // Der Lebensretter: S-O-S Loop
-  Future<void> _startSOS() async {
-    if (!_hasHardware) return;
-    
-    setState(() {
-      _isSosActive = true;
-      _isTorchOn = true; // Visuelles Feedback
-    });
-    
-    _showSnack("SOS SIGNAL AKTIVITERT!");
-
-    // Morse Code Logik: Kurz=200ms, Lang=600ms, Pause=200ms
-    try {
-      while (_isSosActive) {
-        // S (...)
-        for(int i=0; i<3; i++) { if(!_isSosActive) break; await _flash(200); }
-        await Future.delayed(const Duration(milliseconds: 400)); // Pause zwischen Buchstaben
-        
-        // O (---)
-        for(int i=0; i<3; i++) { if(!_isSosActive) break; await _flash(600); }
-        await Future.delayed(const Duration(milliseconds: 400));
-
-        // S (...)
-        for(int i=0; i<3; i++) { if(!_isSosActive) break; await _flash(200); }
-        
-        // Lange Pause bis Neustart
-        await Future.delayed(const Duration(milliseconds: 1500)); 
-      }
-      // Am Ende sicher ausmachen
-      await TorchLight.disableTorch();
-    } catch (e) {
-      _showSnack("Fehler beim SOS: $e");
-      _stopTorch();
-    }
-  }
-
-  Future<void> _flash(int durationMs) async {
-    if (!_isSosActive) return;
-    await TorchLight.enableTorch();
-    await Future.delayed(Duration(milliseconds: durationMs));
-    await TorchLight.disableTorch();
-    await Future.delayed(const Duration(milliseconds: 200)); // Kurze Pause nach jedem Blink
-  }
-
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
-  }
-
-  // --- RESTLICHE LOGIK (Existing) ---
-
+  // --- SAFE LOAD ---
   Future<void> _loadEntries() async {
     final prefs = await SharedPreferences.getInstance();
     final String? dataString = prefs.getString('jagd_logbuch');
+    
     if (dataString != null) {
       try {
         final List<dynamic> decoded = jsonDecode(dataString);
@@ -167,23 +68,22 @@ class _MapPageState extends State<MapPage> {
     await prefs.setString('jagd_logbuch', dataString);
   }
 
+  // --- BACKUP ---
   Future<void> _exportData() async {
-    if (_entries.isEmpty) { _showSnack("Nichts zu sichern!"); return; }
+    if (_entries.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nichts zu sichern!")));
+      return;
+    }
     try {
       final String dataString = jsonEncode(_entries.map((e) => e.toMap()).toList());
-      if (Platform.isWindows) {
-        final directory = await getApplicationDocumentsDirectory();
-        final String path = '${directory.path}\\Weidmannsheil_Backup.txt';
-        await File(path).writeAsString(dataString);
-        showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("Gespeichert"), content: Text("Datei liegt hier:\n$path"), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))]));
-      } else {
-        final directory = await getTemporaryDirectory();
-        final file = File('${directory.path}/Weidmannsheil_Backup.txt');
-        await file.writeAsString(dataString, flush: true);
-        await Future.delayed(const Duration(milliseconds: 300));
-        await Share.shareXFiles([XFile(file.path)], text: 'Weidmannsheil Backup');
-      }
-    } catch (e) { _showSnack("Fehler: $e"); }
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/Weidmannsheil_Backup.txt');
+      await file.writeAsString(dataString, flush: true);
+      await Future.delayed(const Duration(milliseconds: 500));
+      await Share.shareXFiles([XFile(file.path)]);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Fehler: $e")));
+    }
   }
 
   Future<void> _importData() async {
@@ -192,33 +92,53 @@ class _MapPageState extends State<MapPage> {
       if (result != null) {
         File file = File(result.files.single.path!);
         String content = await file.readAsString();
-        final List<dynamic> decoded = jsonDecode(content);
-        List<MapEntry> newEntries = decoded.map((item) {
-            try { return MapEntry.fromMap(item); } catch (e) { return null; }
-          }).whereType<MapEntry>().toList();
-        if (newEntries.isNotEmpty) {
-          setState(() { _entries.addAll(newEntries); _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp)); });
-          _saveEntries();
-          _showSnack("${newEntries.length} importiert!");
-        } else { _showSnack("Keine Daten gefunden."); }
+        _processImportString(content);
       }
-    } catch (e) { _showSnack("Import Fehler: $e"); }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Import Fehler: $e")));
+    }
+  }
+
+  void _processImportString(String jsonString) {
+    try {
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      List<MapEntry> newEntries = decoded.map((item) {
+          try { return MapEntry.fromMap(item); } catch (e) { return null; }
+        }).whereType<MapEntry>().toList();
+
+      if (newEntries.isNotEmpty) {
+        setState(() {
+          _entries.addAll(newEntries);
+          _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        });
+        _saveEntries();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${newEntries.length} Einträge importiert!"), backgroundColor: Colors.green));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Keine gültigen Daten.")));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ungültiges Format.")));
+    }
   }
 
   void _showSettingsDialog() {
     final textColor = widget.isGhostMode ? Colors.red : Colors.black;
     final dialogBg = widget.isGhostMode ? Colors.grey[900] : Colors.white;
+
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: dialogBg,
           title: Text("Einstellungen", style: TextStyle(color: textColor)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-              ListTile(leading: Icon(Icons.upload_file, color: textColor), title: Text("Backup Export", style: TextStyle(color: textColor)), onTap: () { Navigator.pop(context); _exportData(); }),
-              ListTile(leading: Icon(Icons.download, color: textColor), title: Text("Backup Import", style: TextStyle(color: textColor)), onTap: () { Navigator.pop(context); _importData(); }),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(leading: Icon(Icons.share, color: textColor), title: Text("Backup senden", style: TextStyle(color: textColor)), onTap: () { Navigator.pop(context); _exportData(); }),
+              ListTile(leading: Icon(Icons.download, color: textColor), title: Text("Backup laden", style: TextStyle(color: textColor)), onTap: () { Navigator.pop(context); _importData(); }),
               ListTile(leading: Icon(Icons.delete_forever, color: Colors.red), title: Text("Alles löschen", style: TextStyle(color: Colors.red)), onTap: () { setState(() { _entries.clear(); }); _saveEntries(); Navigator.pop(context); }),
-            ]),
+            ],
+          ),
           actions: [ TextButton(onPressed: () => Navigator.pop(context), child: const Text("Schließen")) ],
         );
       },
@@ -267,7 +187,7 @@ class _MapPageState extends State<MapPage> {
   void _toggleTracking() {
     setState(() {
       _isTracking = !_isTracking;
-      if (_isTracking) { _trackingPath = []; _trackingMarkers = []; _addTrackingPoint("Anschuss", Icons.gps_fixed, Colors.orange, _currentPosition); } 
+      if (_isTracking) { _trackingPath = []; _trackingMarkers = []; _addTrackingPoint("Anschuss", Icons.gps_fixed, Colors.orange, _currentPosition); }
       else { _trackingPath = []; _trackingMarkers = []; }
     });
   }
@@ -283,60 +203,164 @@ class _MapPageState extends State<MapPage> {
   }
 
   void _finishTrackingDialog(Map<String, dynamic> envData) {
+    // Gleicher Dialog wie unten, nur angepasst für Tracking Abschluss
+    _addEntryDialog(true, isTrackingFinish: true, envData: envData);
+  }
+
+  // --- KAMERA LOGIK ---
+  Future<void> _pickImage(StateSetter setStateDialog) async {
+    try {
+      final XFile? photo = await _picker.pickImage(source: ImageSource.camera); // Oder gallery
+      if (photo != null) {
+        setStateDialog(() {
+          _tempImage = photo;
+        });
+      }
+    } catch (e) {
+      print("Kamera Fehler: $e");
+    }
+  }
+
+  // --- HAUPT DIALOG (JETZT MIT FOTO) ---
+  void _addEntryDialog(bool isKill, {bool isTrackingFinish = false, Map<String, dynamic>? envData}) {
+    String note = isTrackingFinish ? "Nachsuche: ${_trackingPath.length} Punkte" : "";
     String animal = "Hirsch";
-    String note = "Nachsuche: ${_trackingPath.length} Punkte.";
     final textColor = widget.isGhostMode ? Colors.red : Colors.black;
     final dialogBg = widget.isGhostMode ? Colors.grey[900] : Colors.white;
+    
+    // Reset temp image
+    _tempImage = null;
+
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: dialogBg,
-          title: Text("Nachsuche beenden", style: TextStyle(color: textColor)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-               DropdownButtonFormField<String>(dropdownColor: dialogBg, value: animal, style: TextStyle(color: textColor, fontWeight: FontWeight.bold), items: ["Hirsch", "Reh", "Wildsau", "Gemse", "Fuchs", "Sonstiges"].map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(), onChanged: (v) => animal = v!, decoration: InputDecoration(labelText: "Wildart", labelStyle: TextStyle(color: textColor))),
-               TextField(controller: TextEditingController(text: note), style: TextStyle(color: textColor), decoration: InputDecoration(labelText: "Notiz", labelStyle: TextStyle(color: textColor)), onChanged: (v) => note = v),
-            ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Abbrechen")),
-            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green[800]), onPressed: () { _addNewEntry(true, animal, note, envData['weather'], envData['altitude']); setState(() { _isTracking = false; _trackingPath = []; _trackingMarkers = []; }); Navigator.pop(context); }, child: const Text("SPEICHERN", style: TextStyle(color: Colors.white))),
-          ],
+        return StatefulBuilder( // Wichtig, damit sich das Bild im Dialog aktualisiert!
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: dialogBg,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text(isTrackingFinish ? "Nachsuche beenden" : (isKill ? "Abschuss" : "Sichtung"), style: TextStyle(color: textColor)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                     if (isTrackingFinish) Text("Erfolgreich gefunden!", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                     
+                     // TIERAUSWAHL
+                     DropdownButtonFormField<String>(
+                      dropdownColor: dialogBg,
+                      value: animal,
+                      style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+                      items: ["Hirsch", "Reh", "Wildsau", "Gemse", "Fuchs", "Sonstiges"].map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
+                      onChanged: (v) => animal = v!,
+                      decoration: InputDecoration(labelText: "Wildart", labelStyle: TextStyle(color: textColor)),
+                    ),
+                    
+                    // NOTIZ
+                    TextField(
+                      controller: TextEditingController(text: note),
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(labelText: "Notiz", labelStyle: TextStyle(color: textColor)),
+                      onChanged: (v) => note = v,
+                    ),
+                    
+                    const SizedBox(height: 15),
+                    
+                    // --- KAMERA BUTTON & VORSCHAU ---
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () => _pickImage(setStateDialog),
+                          icon: const Icon(Icons.camera_alt),
+                          label: const Text("Foto"),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800], foregroundColor: Colors.white),
+                        ),
+                        const SizedBox(width: 10),
+                        if (_tempImage != null)
+                          Container(
+                            width: 50, height: 50,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.green),
+                              image: DecorationImage(image: FileImage(File(_tempImage!.path)), fit: BoxFit.cover),
+                            ),
+                          )
+                        else
+                          Text("Kein Bild", style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 12)),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Abbrechen")),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: isKill ? Colors.red[900] : Colors.green[800]),
+                  onPressed: () async {
+                    String weather = "";
+                    double alt = 0.0;
+                    
+                    // Wenn wir Daten schon haben (Tracking), nutzen wir sie, sonst holen
+                    if (envData != null) {
+                      weather = envData['weather'];
+                      alt = envData['altitude'];
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Speichere..."), duration: Duration(milliseconds: 500)));
+                      final data = await _getEnviromentData(_targetPosition.latitude, _targetPosition.longitude);
+                      weather = data['weather'];
+                      alt = data['altitude'];
+                    }
+
+                    _addNewEntry(isKill, animal, note, weather, alt, _tempImage?.path);
+                    
+                    if (isTrackingFinish) {
+                      setState(() { _isTracking = false; _trackingPath = []; _trackingMarkers = []; });
+                    }
+                    Navigator.pop(context);
+                    _resetToGPS(); 
+                  },
+                  child: const Text("SPEICHERN", style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
         );
       },
     );
   }
 
-  void _addEntryDialog(bool isKill) {
-    String note = "";
-    String animal = "Hirsch";
-    final textColor = widget.isGhostMode ? Colors.red : Colors.black;
-    final dialogBg = widget.isGhostMode ? Colors.grey[900] : Colors.white;
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: dialogBg,
-          title: Text(isKill ? "Abschuss" : "Sichtung", style: TextStyle(color: textColor)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-               if (_manualSelection) Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(children: [Icon(Icons.touch_app, color: Colors.orange, size: 16), SizedBox(width: 5), Text("Manuelle Position", style: TextStyle(color: Colors.orange, fontSize: 12))])),
-               DropdownButtonFormField<String>(dropdownColor: dialogBg, value: animal, style: TextStyle(color: textColor, fontWeight: FontWeight.bold), items: ["Hirsch", "Reh", "Wildsau", "Gemse", "Fuchs", "Sonstiges"].map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(), onChanged: (v) => animal = v!, decoration: InputDecoration(labelText: "Wildart", labelStyle: TextStyle(color: textColor))),
-               TextField(style: TextStyle(color: textColor), decoration: InputDecoration(labelText: "Notiz", labelStyle: TextStyle(color: textColor)), onChanged: (v) => note = v),
-            ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Abbrechen")),
-            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: isKill ? Colors.red[900] : Colors.green[800]), onPressed: () async { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hole Daten..."), duration: Duration(milliseconds: 500))); final envData = await _getEnviromentData(_targetPosition.latitude, _targetPosition.longitude); _addNewEntry(isKill, animal, note, envData['weather'], envData['altitude']); Navigator.pop(context); _resetToGPS(); }, child: const Text("SPEICHERN", style: TextStyle(color: Colors.white))),
-          ],
-        );
-      },
-    );
-  }
-
-  void _addNewEntry(bool isKill, String animal, String note, String weather, double alt) {
-    setState(() { _entries.insert(0, MapEntry(isKill: isKill, animal: animal, note: note, position: _targetPosition, timestamp: DateTime.now(), weather: weather, altitude: alt)); });
+  void _addNewEntry(bool isKill, String animal, String note, String weather, double alt, String? imagePath) {
+    setState(() {
+      _entries.insert(0, MapEntry(
+        isKill: isKill,
+        animal: animal,
+        note: note,
+        position: _targetPosition,
+        timestamp: DateTime.now(),
+        weather: weather,
+        altitude: alt,
+        imagePath: imagePath, // NEU: Pfad zum Bild
+      ));
+    });
     _saveEntries();
   }
   
   void _deleteEntry(int index) { setState(() { _entries.removeAt(index); }); _saveEntries(); }
+
+  // --- VOLLBILD ANZEIGE ---
+  void _showFullImage(String path) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: InteractiveViewer( // Erlaubt Zoom mit zwei Fingern
+            child: Image.file(File(path)),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -347,7 +371,8 @@ class _MapPageState extends State<MapPage> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text(_isTracking ? "NACHSUCHE" : "Revierkarte", style: TextStyle(color: _isTracking ? Colors.white : (isGhost ? Colors.red : Colors.white), fontWeight: FontWeight.bold)),
+        title: Text(_isTracking ? "NACHSUCHE AKTIV" : "Revierkarte", 
+            style: TextStyle(color: _isTracking ? Colors.white : (isGhost ? Colors.red : Colors.white), fontWeight: FontWeight.bold)),
         backgroundColor: _isTracking ? Colors.red[900] : (isGhost ? Colors.black : Colors.green[900]),
         iconTheme: IconThemeData(color: Colors.white),
         actions: [ IconButton(icon: Icon(Icons.settings), onPressed: _showSettingsDialog) ],
@@ -377,47 +402,6 @@ class _MapPageState extends State<MapPage> {
                     ],
                   ),
                   if (_manualSelection) Positioned(top: 10, right: 10, child: FloatingActionButton.small(backgroundColor: Colors.white, onPressed: _resetToGPS, child: Icon(Icons.my_location, color: Colors.blue))),
-                  
-                  // --- HARDWARE OVERLAYS (NUR AUF HANDY) ---
-                  if (_hasHardware) ...[
-                    // KOMPASS (Oben Links)
-                    Positioned(
-                      left: 10, top: 10,
-                      child: StreamBuilder<CompassEvent>(
-                        stream: FlutterCompass.events,
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) return const SizedBox.shrink();
-                          double? direction = snapshot.data?.heading;
-                          if (direction == null) return const SizedBox.shrink();
-                          return Transform.rotate(
-                            angle: (direction * (math.pi / 180) * -1),
-                            child: Icon(Icons.explore, size: 50, color: isGhost ? Colors.red.withOpacity(0.7) : Colors.white.withOpacity(0.8), shadows: const [Shadow(blurRadius: 10, color: Colors.black)]),
-                          );
-                        },
-                      ),
-                    ),
-                    // TASCHENLAMPE / SOS (Oben Rechts, unter dem GPS Button wenn da)
-                    Positioned(
-                      right: 10, top: _manualSelection ? 70 : 10,
-                      child: GestureDetector(
-                        onLongPress: _startSOS, // LANG DRÜCKEN FÜR SOS
-                        onTap: _toggleTorch,    // KURZ DRÜCKEN FÜR LICHT
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: _isSosActive ? Colors.red : (_isTorchOn ? Colors.yellow[700] : Colors.white),
-                            shape: BoxShape.circle,
-                            boxShadow: const [BoxShadow(blurRadius: 5, color: Colors.black45)]
-                          ),
-                          child: Icon(
-                            _isSosActive ? Icons.sos : Icons.flashlight_on, 
-                            color: _isSosActive ? Colors.white : (_isTorchOn ? Colors.black : Colors.grey),
-                            size: 30
-                          ),
-                        ),
-                      ),
-                    )
-                  ]
                 ],
               ),
             ),
@@ -430,7 +414,13 @@ class _MapPageState extends State<MapPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10),
               child: _entries.isEmpty
                   ? Center(child: Text("Logbuch leer", style: TextStyle(color: isGhost ? Colors.grey : Colors.grey[700])))
-                  : ListView.builder(itemCount: _entries.length, padding: const EdgeInsets.only(top: 0, bottom: 300), itemBuilder: (context, index) { return Dismissible(key: UniqueKey(), onDismissed: (_) => _deleteEntry(index), background: Container(color: Colors.red, child: const Icon(Icons.delete, color: Colors.white)), child: _buildLogCard(_entries[index], isGhost)); }),
+                  : ListView.builder(
+                      itemCount: _entries.length,
+                      padding: const EdgeInsets.only(top: 0, bottom: 300), 
+                      itemBuilder: (context, index) {
+                        return Dismissible(key: UniqueKey(), onDismissed: (_) => _deleteEntry(index), background: Container(color: Colors.red, child: const Icon(Icons.delete, color: Colors.white)), child: _buildLogCard(_entries[index], isGhost));
+                      },
+                    ),
             ),
           ),
           
@@ -456,6 +446,7 @@ class _MapPageState extends State<MapPage> {
   
   Widget _trackingBtn(String label, IconData icon, Color color, VoidCallback onTap) { return Column(children: [ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: const CircleBorder(), padding: const EdgeInsets.all(20), elevation: 5), onPressed: onTap, child: Icon(icon, color: color, size: 30)), const SizedBox(height: 5), Text(label, style: const TextStyle(fontWeight: FontWeight.bold))]); }
 
+  // --- KOMPAKTES DESIGN (MIT FOTO) ---
   Widget _buildLogCard(MapEntry e, bool isGhost) {
     final dateStr = DateFormat('dd.MM. HH:mm').format(e.timestamp);
     final cardColor = isGhost ? Colors.grey[900] : Colors.white;
@@ -467,15 +458,77 @@ class _MapPageState extends State<MapPage> {
     final wind = weatherDisplay.contains(',') ? weatherDisplay.split(',')[1].trim() : "-";
     final altDisplay = e.altitude == 0.0 ? "--" : "${e.altitude.toInt()}m";
 
-    return Card(elevation: 2, margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), color: cardColor, child: Container(padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: accentColor!, width: 4))), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(e.isKill ? Icons.gps_fixed : Icons.visibility, color: accentColor, size: 20), const SizedBox(width: 8), Text(e.animal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)), const SizedBox(width: 10), Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [Container(height: 12, width: 1, color: Colors.grey.withOpacity(0.3)), const SizedBox(width: 8), _buildCompactStat(Icons.terrain, altDisplay, subTextColor!), const SizedBox(width: 8), _buildCompactStat(Icons.thermostat, temp, subTextColor), const SizedBox(width: 8), _buildCompactStat(Icons.air, wind, subTextColor)]))), const SizedBox(width: 5), Text(dateStr, style: TextStyle(color: subTextColor, fontSize: 11))]), if (e.note.isNotEmpty) ...[const SizedBox(height: 4), Padding(padding: const EdgeInsets.only(left: 28), child: Text(e.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 12, fontStyle: FontStyle.italic)))]])));
+    return Card(
+      elevation: 2, margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      color: cardColor,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: accentColor!, width: 4))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+                Icon(e.isKill ? Icons.gps_fixed : Icons.visibility, color: accentColor, size: 20),
+                const SizedBox(width: 8),
+                Expanded( // Tiername bekommt Platz
+                  child: Text(e.animal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor), overflow: TextOverflow.ellipsis),
+                ),
+                
+                // --- FOTO THUMBNAIL (NEU!) ---
+                if (e.imagePath != null && File(e.imagePath!).existsSync())
+                  GestureDetector(
+                    onTap: () => _showFullImage(e.imagePath!),
+                    child: Container(
+                      width: 40, height: 30,
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(4),
+                        image: DecorationImage(image: FileImage(File(e.imagePath!)), fit: BoxFit.cover),
+                      ),
+                    ),
+                  ),
+                // -----------------------------
+
+                // Wetter Daten
+                _buildCompactStat(Icons.terrain, altDisplay, subTextColor!), const SizedBox(width: 8),
+                _buildCompactStat(Icons.thermostat, temp, subTextColor), const SizedBox(width: 8),
+                _buildCompactStat(Icons.air, wind, subTextColor),
+                const SizedBox(width: 8),
+                Text(dateStr, style: TextStyle(color: subTextColor, fontSize: 11)),
+              ]),
+            if (e.note.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Padding(padding: const EdgeInsets.only(left: 28), child: Text(e.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 12, fontStyle: FontStyle.italic))),
+            ]
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildCompactStat(IconData icon, String text, Color color) { return Row(children: [Icon(icon, size: 12, color: color.withOpacity(0.6)), const SizedBox(width: 2), Text(text, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold))]); }
 }
 
+// --- MAP ENTRY (MIT IMAGE PATH) ---
 class MapEntry {
   final bool isKill; final String animal; final String note; final LatLng position; final DateTime timestamp; final String weather; final double altitude;
-  MapEntry({required this.isKill, required this.animal, required this.note, required this.position, required this.timestamp, this.weather = "", this.altitude = 0.0});
-  Map<String, dynamic> toMap() => {'isKill': isKill, 'animal': animal, 'note': note, 'lat': position.latitude, 'lng': position.longitude, 'time': timestamp.toIso8601String(), 'weather': weather, 'alt': altitude};
-  factory MapEntry.fromMap(Map<String, dynamic> map) => MapEntry(isKill: map['isKill'] ?? false, animal: (map['animal'] as String?) ?? "Unbekannt", note: (map['note'] as String?) ?? "", position: LatLng((map['lat'] as num?)?.toDouble() ?? 0.0, (map['lng'] as num?)?.toDouble() ?? 0.0), timestamp: DateTime.tryParse((map['time'] as String?) ?? "") ?? DateTime.now(), weather: (map['weather'] as String?) ?? "", altitude: (map['alt'] as num?)?.toDouble() ?? 0.0);
+  final String? imagePath; // NEU
+
+  MapEntry({required this.isKill, required this.animal, required this.note, required this.position, required this.timestamp, this.weather = "", this.altitude = 0.0, this.imagePath});
+  
+  Map<String, dynamic> toMap() => {'isKill': isKill, 'animal': animal, 'note': note, 'lat': position.latitude, 'lng': position.longitude, 'time': timestamp.toIso8601String(), 'weather': weather, 'alt': altitude, 'imagePath': imagePath};
+  
+  factory MapEntry.fromMap(Map<String, dynamic> map) => MapEntry(
+    isKill: map['isKill'] ?? false, 
+    animal: (map['animal'] as String?) ?? "Unbekannt", 
+    note: (map['note'] as String?) ?? "", 
+    position: LatLng((map['lat'] as num?)?.toDouble() ?? 0.0, (map['lng'] as num?)?.toDouble() ?? 0.0), 
+    timestamp: DateTime.tryParse((map['time'] as String?) ?? "") ?? DateTime.now(), 
+    weather: (map['weather'] as String?) ?? "", 
+    altitude: (map['alt'] as num?)?.toDouble() ?? 0.0,
+    imagePath: map['imagePath'], // Laden
+  );
 }
