@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart'; // Das hier ist neu!
 
 void main() {
   runApp(const WeidmannsheilApp());
 }
 
-// Boss, hier definieren wir unser Farb-Thema für den Jagd-Modus
 class HunterTheme {
   static final ThemeData normal = ThemeData(
     primarySwatch: Colors.green,
@@ -21,12 +21,11 @@ class HunterTheme {
     primaryColor: Colors.red,
     scaffoldBackgroundColor: Colors.black,
     brightness: Brightness.dark,
-    // Alles wird Rot/Schwarz für die Nachtsicht
     colorScheme: const ColorScheme.dark(
       primary: Colors.red,
       secondary: Colors.redAccent,
       surface: Colors.black,
-      onSurface: Colors.red, // Textfarbe auf Schwarz
+      onSurface: Colors.red,
     ),
     textTheme: const TextTheme(
       displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.red),
@@ -50,13 +49,13 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
     setState(() {
       _isGhostMode = !_isGhostMode;
     });
-    // Haptisches Feedback (Vibration), damit er spürt, dass was passiert
     HapticFeedback.mediumImpact();
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false, // Das kleine "Debug" Banner oben rechts wegmachen
       title: 'Weidmannsheil',
       theme: _isGhostMode ? HunterTheme.ghostMode : HunterTheme.normal,
       home: DashboardPage(
@@ -67,22 +66,73 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   }
 }
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   final bool isGhostMode;
   final VoidCallback toggleMode;
 
-  const DashboardPage({
-    super.key,
-    required this.isGhostMode,
-    required this.toggleMode,
-  });
+  const DashboardPage({super.key, required this.isGhostMode, required this.toggleMode});
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  String _locationMessage = "Standort wird gesucht...";
+  String _coordinates = "--";
+
+  @override
+  void initState() {
+    super.initState();
+    _determinePosition(); // Sofort beim Start GPS suchen
+  }
+
+  // Die Magie: Hier holen wir die GPS Daten
+  Future<void> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // 1. Ist GPS überhaupt an?
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() => _locationMessage = "GPS ist deaktiviert.");
+      return;
+    }
+
+    // 2. Haben wir die Erlaubnis?
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() => _locationMessage = "GPS Zugriff verweigert.");
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      setState(() => _locationMessage = "GPS dauerhaft verweigert.");
+      return;
+    }
+
+    // 3. Position holen
+    Position position = await Geolocator.getCurrentPosition();
+    setState(() {
+      _locationMessage = "Standort gefunden";
+      // Wir runden auf 4 Stellen, Thomas braucht keine Nanometer-Präzision
+      _coordinates = "${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}";
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Wir holen uns die Farben aus dem aktuellen Theme (Ghost oder Normal)
+    final isGhost = widget.isGhostMode;
+    final textColor = isGhost ? Colors.red : Colors.green[900];
+    final boxColor = isGhost ? Colors.grey[900] : Colors.white;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(isGhostMode ? "GHOST MODE AKTIV" : "Weidmannsheil, Thomas"),
-        backgroundColor: isGhostMode ? Colors.black : Colors.green[800],
+        title: Text(isGhost ? "GHOST MODE" : "Weidmannsheil"),
+        backgroundColor: isGhost ? Colors.black : Colors.green[800],
         centerTitle: true,
       ),
       body: Padding(
@@ -90,24 +140,40 @@ class DashboardPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Wetter Widget (Platzhalter)
-            _buildInfoCard(
-              context,
-              icon: Icons.wind_power,
-              title: "Wind: Ost 12km/h",
-              subtitle: "Perfekt für den Hochsitz am Waldrand",
+            // --- GPS WIDGET ---
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: boxColor,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: isGhost ? [] : [const BoxShadow(color: Colors.black12, blurRadius: 5)],
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.gps_fixed, size: 40, color: isGhost ? Colors.red : Colors.green),
+                  const SizedBox(width: 15),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_locationMessage, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
+                      Text("Lat/Lon: $_coordinates", style: TextStyle(fontSize: 18, fontFamily: 'Courier', color: textColor)),
+                    ],
+                  )
+                ],
+              ),
             ),
+            
             const SizedBox(height: 20),
             
-            // Der Haupt-Button
+            // --- BUTTON ---
             Expanded(
               child: GestureDetector(
-                onTap: toggleMode,
+                onTap: widget.toggleMode,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isGhostMode ? Colors.red.withOpacity(0.1) : Colors.green[100],
+                    color: isGhost ? Colors.red.withOpacity(0.1) : Colors.green[100],
                     border: Border.all(
-                      color: isGhostMode ? Colors.red : Colors.green,
+                      color: isGhost ? Colors.red : Colors.green,
                       width: 4,
                     ),
                     borderRadius: BorderRadius.circular(20),
@@ -116,86 +182,22 @@ class DashboardPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        isGhostMode ? Icons.visibility_off : Icons.visibility,
+                        isGhost ? Icons.visibility_off : Icons.visibility,
                         size: 80,
-                        color: isGhostMode ? Colors.red : Colors.green[800],
+                        color: isGhost ? Colors.red : Colors.green[800],
                       ),
                       const SizedBox(height: 20),
                       Text(
-                        isGhostMode ? "JAGD BEENDEN" : "JAGD STARTEN",
+                        isGhost ? "JAGD BEENDEN" : "JAGD STARTEN",
                         style: Theme.of(context).textTheme.displayLarge,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        isGhostMode ? "Display gedimmt. Töne aus." : "Auf in den Wald.",
-                        style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ],
                   ),
                 ),
               ),
             ),
-            
-            const SizedBox(height: 20),
-            
-            // Grid für Tools
-            Row(
-              children: [
-                Expanded(child: _buildToolButton(context, Icons.surround_sound, "Blatter")),
-                const SizedBox(width: 15),
-                Expanded(child: _buildToolButton(context, Icons.map, "Karte & Log")),
-              ],
-            )
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildInfoCard(BuildContext context, {required IconData icon, required String title, required String subtitle}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isGhostMode ? Colors.grey[900] : Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: isGhostMode ? [] : [const BoxShadow(color: Colors.black12, blurRadius: 5)],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 40, color: isGhostMode ? Colors.red : Colors.green),
-          const SizedBox(width: 15),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              Text(subtitle, style: const TextStyle(fontSize: 14)),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToolButton(BuildContext context, IconData icon, String label) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isGhostMode ? Colors.grey[900] : Colors.white,
-        foregroundColor: isGhostMode ? Colors.red : Colors.black87,
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-            side: BorderSide(color: isGhostMode ? Colors.red : Colors.transparent)
-        ),
-      ),
-      onPressed: () {
-        // Hier kommt später die Navigation hin
-      },
-      child: Column(
-        children: [
-          Icon(icon, size: 30),
-          const SizedBox(height: 5),
-          Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ],
       ),
     );
   }
