@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart'; // Das hier ist neu!
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'blatter_page.dart';
+import 'map_page.dart';
 
 void main() {
   runApp(const WeidmannsheilApp());
@@ -55,8 +59,8 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, // Das kleine "Debug" Banner oben rechts wegmachen
-      title: 'Weidmannsheil',
+      debugShowCheckedModeBanner: false,
+      title: 'Waidmannsheil',
       theme: _isGhostMode ? HunterTheme.ghostMode : HunterTheme.normal,
       home: DashboardPage(
         isGhostMode: _isGhostMode,
@@ -77,61 +81,118 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  String _locationMessage = "Standort wird gesucht...";
+  String _locationMessage = "Suche GPS...";
   String _coordinates = "--";
+  
+  // WETTER VARIABLEN
+  String _weatherTemp = "--°C";
+  String _windSpeed = "-- km/h";
+  String _windDir = "--";
+  IconData _weatherIcon = Icons.cloud_off;
+  bool _isLoadingWeather = false;
 
   @override
   void initState() {
     super.initState();
-    _determinePosition(); // Sofort beim Start GPS suchen
+    _determinePosition(); 
   }
 
-  // Die Magie: Hier holen wir die GPS Daten
   Future<void> _determinePosition() async {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // 1. Ist GPS überhaupt an?
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(() => _locationMessage = "GPS ist deaktiviert.");
+      setState(() => _locationMessage = "GPS ist aus");
       return;
     }
 
-    // 2. Haben wir die Erlaubnis?
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        setState(() => _locationMessage = "GPS Zugriff verweigert.");
+        setState(() => _locationMessage = "Kein GPS Zugriff");
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      setState(() => _locationMessage = "GPS dauerhaft verweigert.");
+      setState(() => _locationMessage = "GPS dauerhaft verweigert");
       return;
     }
 
-    // 3. Position holen
     Position position = await Geolocator.getCurrentPosition();
     setState(() {
       _locationMessage = "Standort gefunden";
-      // Wir runden auf 4 Stellen, Thomas braucht keine Nanometer-Präzision
       _coordinates = "${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}";
     });
+
+    _fetchWeather(position.latitude, position.longitude);
+  }
+
+  Future<void> _fetchWeather(double lat, double lon) async {
+    setState(() => _isLoadingWeather = true);
+
+    try {
+      final url = Uri.parse(
+          'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh');
+      
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final current = data['current'];
+
+        final temp = current['temperature_2m'];
+        final windS = current['wind_speed_10m'];
+        final windD = current['wind_direction_10m'];
+        final wCode = current['weather_code'];
+
+        setState(() {
+          _weatherTemp = "$temp°C";
+          _windSpeed = "$windS km/h";
+          _windDir = _getWindDirection(windD);
+          _weatherIcon = _getWeatherIcon(wCode);
+          _isLoadingWeather = false;
+        });
+      } else {
+        throw Exception('Server Fehler');
+      }
+    } catch (e) {
+      print("Wetter Fehler: $e");
+      setState(() {
+        _weatherTemp = "Fehler";
+        _isLoadingWeather = false;
+      });
+    }
+  }
+
+  String _getWindDirection(int degrees) {
+    const directions = ["Nord", "Nord-Ost", "Ost", "Süd-Ost", "Süd", "Süd-West", "West", "Nord-West"];
+    return directions[((degrees + 22.5) % 360) ~/ 45];
+  }
+
+  IconData _getWeatherIcon(int code) {
+    if (code == 0) return Icons.wb_sunny;
+    if (code >= 1 && code <= 3) return Icons.cloud;
+    if (code >= 45 && code <= 48) return Icons.foggy;
+    if (code >= 51 && code <= 67) return Icons.beach_access;
+    if (code >= 71 && code <= 77) return Icons.ac_unit;
+    if (code >= 95) return Icons.flash_on;
+    return Icons.wb_cloudy;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Wir holen uns die Farben aus dem aktuellen Theme (Ghost oder Normal)
     final isGhost = widget.isGhostMode;
-    final textColor = isGhost ? Colors.red : Colors.green[900];
-    final boxColor = isGhost ? Colors.grey[900] : Colors.white;
+    
+    // --- HIER WAR DER FEHLER: Wir fügen "!" hinzu um sicher zu sein ---
+    final Color textColor = isGhost ? Colors.red : Colors.green[900]!; 
+    final Color boxColor = isGhost ? Colors.grey[900]! : Colors.white;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isGhost ? "GHOST MODE" : "Weidmannsheil"),
+        title: Text(isGhost ? "GHOST MODE" : "Waidmannsheil"),
         backgroundColor: isGhost ? Colors.black : Colors.green[800],
         centerTitle: true,
       ),
@@ -140,32 +201,55 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- GPS WIDGET ---
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: boxColor,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: isGhost ? [] : [const BoxShadow(color: Colors.black12, blurRadius: 5)],
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: isGhost ? [] : [const BoxShadow(color: Colors.black12, blurRadius: 10)],
+                border: Border.all(color: isGhost ? Colors.red.withOpacity(0.5) : Colors.transparent),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.gps_fixed, size: 40, color: isGhost ? Colors.red : Colors.green),
-                  const SizedBox(width: 15),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_locationMessage, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
-                      Text("Lat/Lon: $_coordinates", style: TextStyle(fontSize: 18, fontFamily: 'Courier', color: textColor)),
-                    ],
-                  )
-                ],
-              ),
+              child: _isLoadingWeather 
+                ? Center(child: CircularProgressIndicator(color: isGhost ? Colors.red : Colors.green))
+                : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      children: [
+                        Icon(_weatherIcon, size: 50, color: isGhost ? Colors.red : Colors.orange),
+                        const SizedBox(height: 5),
+                        Text(_weatherTemp, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          children: [
+                            Text("Wind:", style: TextStyle(fontSize: 16, color: textColor)),
+                            const SizedBox(width: 5),
+                            Icon(Icons.air, color: textColor),
+                          ],
+                        ),
+                        Text(_windDir, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
+                        Text(_windSpeed, style: TextStyle(fontSize: 16, color: textColor)),
+                      ],
+                    )
+                  ],
+                ),
             ),
             
+            const SizedBox(height: 10),
+            
+            Center(
+              child: Text(
+                "$_locationMessage ($_coordinates)",
+                style: TextStyle(color: isGhost ? Colors.grey : Colors.grey[600], fontSize: 12),
+              ),
+            ),
+
             const SizedBox(height: 20),
             
-            // --- BUTTON ---
             Expanded(
               child: GestureDetector(
                 onTap: widget.toggleMode,
@@ -196,8 +280,46 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
             ),
+            
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _buildToolButton(context, Icons.surround_sound, "Blatter", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => BlatterPage(isGhostMode: isGhost)));
+                  }, boxColor, textColor),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: _buildToolButton(context, Icons.map, "Karte & Log", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => MapPage(isGhostMode: isGhost)));
+                  }, boxColor, textColor),
+                ),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildToolButton(BuildContext context, IconData icon, String label, VoidCallback onTap, Color bg, Color text) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: bg,
+        foregroundColor: text,
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        elevation: 3,
+      ),
+      onPressed: onTap,
+      child: Column(
+        children: [
+          Icon(icon, size: 30),
+          const SizedBox(height: 5),
+          Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }

@@ -1,6 +1,6 @@
 name: weidmannsheil
 description: Opas Jagd App
-publish_to: 'none'
+publish_to: 'none' 
 version: 1.0.0+1
 
 environment:
@@ -9,8 +9,20 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Icons für die UI
   cupertino_icons: ^1.0.2
-  geolocator: ^14.0.2
+  # Für das GPS
+  geolocator: ^13.0.0
+  # Für die Tierstimmen
+  audioplayers: ^6.0.0
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+  intl: ^0.20.2
+  shared_preferences: ^2.5.3
+  http: ^1.6.0
+  share_plus: ^12.0.1
+  path_provider: ^2.1.5
+  file_picker: ^10.3.7
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +31,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Hier sagen wir Flutter, wo die Beute liegt
+  assets:
+    - assets/sounds/
