@@ -116,7 +116,7 @@ class _BlatterPageState extends State<BlatterPage> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text("Jagd-Blatter", style: TextStyle(color: isGhost ? Colors.red : Colors.white)),
+        title: Text("Lockrufe", style: TextStyle(color: isGhost ? Colors.red : Colors.white)),
         backgroundColor: isGhost ? Colors.black : Colors.green[800],
         iconTheme: IconThemeData(color: isGhost ? Colors.red : Colors.white),
       ),

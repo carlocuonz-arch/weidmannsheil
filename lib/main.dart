@@ -304,7 +304,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isGhost ? "GHOST MODE" : "Weidmannsheil"),
+        title: Text(isGhost ? "GHOST MODE" : "Waidmannsheil"),
         backgroundColor: isGhost ? Colors.black : Colors.green[800],
         centerTitle: true,
       ),
@@ -489,7 +489,7 @@ class _DashboardPageState extends State<DashboardPage> {
             // --- WERKZEUGE ---
             Row(
               children: [
-                Expanded(child: _buildToolButton(context, Icons.surround_sound, "Blatter", () { Navigator.push(context, MaterialPageRoute(builder: (context) => BlatterPage(isGhostMode: isGhost))); }, boxColor, textColor)),
+                Expanded(child: _buildToolButton(context, Icons.surround_sound, "Lockrufe", () { Navigator.push(context, MaterialPageRoute(builder: (context) => BlatterPage(isGhostMode: isGhost))); }, boxColor, textColor)),
                 const SizedBox(width: 15),
                 Expanded(child: _buildToolButton(context, Icons.map, "Karte & Log", () { Navigator.push(context, MaterialPageRoute(builder: (context) => MapPage(isGhostMode: isGhost))); }, boxColor, textColor)),
               ],

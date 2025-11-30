@@ -555,13 +555,76 @@ class _MapPageState extends State<MapPage> {
           if (_isTracking)
             Expanded(
               flex: 4,
-              child: Container(padding: const EdgeInsets.all(10), color: isGhost ? Colors.grey[900] : Colors.red[50], child: Column(children: [
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                color: isGhost ? Colors.grey[900] : Colors.red[50],
+                child: Column(
+                  children: [
                     Text("Nachsuche läuft...", style: TextStyle(color: isGhost ? Colors.red : Colors.red[900], fontWeight: FontWeight.bold, fontSize: 18)),
                     const SizedBox(height: 10),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [_trackingBtn("Schweiß", Icons.water_drop, Colors.red, () => _addTrackingPoint("Schweiß", Icons.water_drop, Colors.red, _currentPosition)), _trackingBtn("Wundbett", Icons.bed, Colors.orange, () => _addTrackingPoint("Wundbett", Icons.bed, Colors.orange, _currentPosition)), _trackingBtn("Knochen", Icons.accessibility_new, Colors.grey, () => _addTrackingPoint("Knochen", Icons.accessibility_new, Colors.grey, _currentPosition))]),
+
+                    // TRACKING BUTTONS
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _trackingBtn("Schweiß", Icons.water_drop, Colors.red, () => _addTrackingPoint("Schweiß", Icons.water_drop, Colors.red, _currentPosition)),
+                        _trackingBtn("Wundbett", Icons.bed, Colors.orange, () => _addTrackingPoint("Wundbett", Icons.bed, Colors.orange, _currentPosition)),
+                        _trackingBtn("Schnitthaar", Icons.grass, Colors.brown, () => _addTrackingPoint("Schnitthaar", Icons.grass, Colors.brown, _currentPosition)),
+                      ],
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    // STATISTIK-BOX
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isGhost ? Colors.grey[850] : Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: isGhost ? Colors.red.withOpacity(0.3) : Colors.red.withOpacity(0.3), width: 2),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildTrackingStat(Icons.route, "Punkte", "${_trackingPath.length}", isGhost),
+                              Container(height: 30, width: 1, color: Colors.grey),
+                              _buildTrackingStat(Icons.timeline, "Markierungen", "${_trackingMarkers.length - 1}", isGhost),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Tipp: Markiere Spuren für bessere Übersicht",
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                              color: isGhost ? Colors.grey : Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const Spacer(),
-                    SizedBox(width: double.infinity, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green[800], padding: const EdgeInsets.all(15)), onPressed: _finishTracking, icon: const Icon(Icons.check_circle, size: 30), label: const Text("GEFUNDEN & BEENDEN", style: TextStyle(fontSize: 18, color: Colors.white)))),
-                  ])),
+
+                    // GEFUNDEN BUTTON - MIT WEIßEM HAKEN
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[800],
+                          padding: const EdgeInsets.all(15),
+                        ),
+                        onPressed: _finishTracking,
+                        icon: const Icon(Icons.check_circle, size: 30, color: Colors.white), // WEISS statt violett
+                        label: const Text("GEFUNDEN & BEENDEN", style: TextStyle(fontSize: 18, color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
         ],
       ),
@@ -699,6 +762,31 @@ class _MapPageState extends State<MapPage> {
   }
 
   Widget _buildCompactStat(IconData icon, String text, Color color) { return Row(children: [Icon(icon, size: 12, color: color.withOpacity(0.6)), const SizedBox(width: 2), Text(text, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold))]); }
+
+  // TRACKING STATISTIK
+  Widget _buildTrackingStat(IconData icon, String label, String value, bool isGhost) {
+    return Column(
+      children: [
+        Icon(icon, color: isGhost ? Colors.red : Colors.red[900], size: 28),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: isGhost ? Colors.white : Colors.black87,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isGhost ? Colors.grey : Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // --- MAP ENTRY (MIT IMAGE PATH) ---
