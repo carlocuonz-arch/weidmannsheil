@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -11,7 +12,10 @@ import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart'; // NEU: Für die Kamera
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_compass/flutter_compass.dart';
+import 'package:torch_light/torch_light.dart';
+import 'dart:math' as math;
 
 class MapPage extends StatefulWidget {
   final bool isGhostMode;
@@ -38,11 +42,88 @@ class _MapPageState extends State<MapPage> {
   XFile? _tempImage;
   final ImagePicker _picker = ImagePicker();
 
+  // GPS Stream für Live-Tracking
+  StreamSubscription<Position>? _positionStreamSubscription;
+
+  // Kompass
+  StreamSubscription<CompassEvent>? _compassSubscription;
+  double _compassHeading = 0.0;
+
+  // Taschenlampe
+  bool _isTorchOn = false;
+
   @override
   void initState() {
     super.initState();
     _locateUser();
     _loadEntries();
+    _startCompass();
+  }
+
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    _compassSubscription?.cancel();
+    if (_isTorchOn) {
+      _toggleTorch(); // Taschenlampe ausschalten beim Verlassen
+    }
+    super.dispose();
+  }
+
+  void _startCompass() {
+    _compassSubscription = FlutterCompass.events?.listen((CompassEvent event) {
+      setState(() {
+        _compassHeading = event.heading ?? 0.0;
+      });
+    });
+  }
+
+  void _startPositionStream() {
+    final locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5, // Update alle 5 Meter
+    );
+
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((Position position) {
+      setState(() {
+        _currentPosition = LatLng(position.latitude, position.longitude);
+        if (!_manualSelection) {
+          _targetPosition = _currentPosition;
+        }
+      });
+
+      // Wenn Tracking aktiv ist, Karte mitbewegen
+      if (_isTracking) {
+        _mapController.move(_currentPosition, _mapController.camera.zoom);
+      }
+    });
+  }
+
+  void _stopPositionStream() {
+    _positionStreamSubscription?.cancel();
+    _positionStreamSubscription = null;
+  }
+
+  Future<void> _toggleTorch() async {
+    try {
+      if (_isTorchOn) {
+        await TorchLight.disableTorch();
+      } else {
+        await TorchLight.enableTorch();
+      }
+      setState(() {
+        _isTorchOn = !_isTorchOn;
+      });
+    } catch (e) {
+      // Taschenlampe nicht verfügbar (z.B. auf Desktop)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Taschenlampe nicht verfügbar")),
+        );
+      }
+    }
   }
 
   // --- SAFE LOAD ---
@@ -187,8 +268,16 @@ class _MapPageState extends State<MapPage> {
   void _toggleTracking() {
     setState(() {
       _isTracking = !_isTracking;
-      if (_isTracking) { _trackingPath = []; _trackingMarkers = []; _addTrackingPoint("Anschuss", Icons.gps_fixed, Colors.orange, _currentPosition); }
-      else { _trackingPath = []; _trackingMarkers = []; }
+      if (_isTracking) {
+        _trackingPath = [];
+        _trackingMarkers = [];
+        _addTrackingPoint("Anschuss", Icons.gps_fixed, Colors.orange, _currentPosition);
+        _startPositionStream(); // GPS Live-Tracking starten
+      } else {
+        _trackingPath = [];
+        _trackingMarkers = [];
+        _stopPositionStream(); // GPS Stream stoppen
+      }
     });
   }
 
@@ -311,9 +400,10 @@ class _MapPageState extends State<MapPage> {
                     }
 
                     _addNewEntry(isKill, animal, note, weather, alt, _tempImage?.path);
-                    
+
                     if (isTrackingFinish) {
                       setState(() { _isTracking = false; _trackingPath = []; _trackingMarkers = []; });
+                      _stopPositionStream(); // GPS Stream stoppen
                     }
                     Navigator.pop(context);
                     _resetToGPS(); 
@@ -371,11 +461,18 @@ class _MapPageState extends State<MapPage> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: Text(_isTracking ? "NACHSUCHE AKTIV" : "Revierkarte", 
+        title: Text(_isTracking ? "NACHSUCHE AKTIV" : "Revierkarte",
             style: TextStyle(color: _isTracking ? Colors.white : (isGhost ? Colors.red : Colors.white), fontWeight: FontWeight.bold)),
         backgroundColor: _isTracking ? Colors.red[900] : (isGhost ? Colors.black : Colors.green[900]),
         iconTheme: IconThemeData(color: Colors.white),
-        actions: [ IconButton(icon: Icon(Icons.settings), onPressed: _showSettingsDialog) ],
+        actions: [
+          IconButton(
+            icon: Icon(_isTorchOn ? Icons.flashlight_on : Icons.flashlight_off),
+            onPressed: _toggleTorch,
+            tooltip: "Taschenlampe",
+          ),
+          IconButton(icon: Icon(Icons.settings), onPressed: _showSettingsDialog),
+        ],
       ),
       body: Column(
         children: [
@@ -402,6 +499,34 @@ class _MapPageState extends State<MapPage> {
                     ],
                   ),
                   if (_manualSelection) Positioned(top: 10, right: 10, child: FloatingActionButton.small(backgroundColor: Colors.white, onPressed: _resetToGPS, child: Icon(Icons.my_location, color: Colors.blue))),
+
+                  // Kompass Overlay (oben links)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                      ),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Transform.rotate(
+                            angle: (_compassHeading * (math.pi / 180) * -1),
+                            child: Icon(Icons.navigation, color: Colors.red, size: 40),
+                          ),
+                          Positioned(
+                            top: 5,
+                            child: Text('N', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
