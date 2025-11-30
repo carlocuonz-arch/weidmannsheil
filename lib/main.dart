@@ -142,35 +142,91 @@ class _DashboardPageState extends State<DashboardPage> {
     _fetchWeatherAndSun();
   }
 
-  // --- NOTFALL-LOGIK (OHNE MOND, DAMIT ES LÄUFT) ---
+  // LOKALE MOND-PHASEN-BERECHNUNG
+  Map<String, dynamic> _calculateMoonPhase() {
+    final now = DateTime.now();
+
+    // Referenz: Neumond am 6. Januar 2000, 18:14 UTC
+    final knownNewMoon = DateTime.utc(2000, 1, 6, 18, 14);
+    final daysSinceNewMoon = now.difference(knownNewMoon).inHours / 24.0;
+
+    // Synodischer Monat = 29.53058867 Tage
+    const synodicMonth = 29.53058867;
+    final phase = (daysSinceNewMoon % synodicMonth) / synodicMonth;
+
+    String phaseName;
+    String phaseEmoji;
+    IconData phaseIcon;
+
+    if (phase < 0.03 || phase > 0.97) {
+      phaseName = "Neumond";
+      phaseEmoji = "🌑";
+      phaseIcon = Icons.brightness_1;
+    } else if (phase < 0.22) {
+      phaseName = "Zunehmend";
+      phaseEmoji = "🌒";
+      phaseIcon = Icons.nightlight;
+    } else if (phase < 0.28) {
+      phaseName = "1. Viertel";
+      phaseEmoji = "🌓";
+      phaseIcon = Icons.brightness_6;
+    } else if (phase < 0.47) {
+      phaseName = "Zunehmend";
+      phaseEmoji = "🌔";
+      phaseIcon = Icons.nightlight;
+    } else if (phase < 0.53) {
+      phaseName = "Vollmond";
+      phaseEmoji = "🌕";
+      phaseIcon = Icons.brightness_1_outlined;
+    } else if (phase < 0.72) {
+      phaseName = "Abnehmend";
+      phaseEmoji = "🌖";
+      phaseIcon = Icons.nightlight_outlined;
+    } else if (phase < 0.78) {
+      phaseName = "Letztes Viertel";
+      phaseEmoji = "🌗";
+      phaseIcon = Icons.brightness_4;
+    } else {
+      phaseName = "Abnehmend";
+      phaseEmoji = "🌘";
+      phaseIcon = Icons.nightlight_outlined;
+    }
+
+    final illumination = (phase < 0.5) ? phase * 2 : (1 - phase) * 2;
+    final illuminationPercent = (illumination * 100).toInt();
+
+    return {
+      'name': phaseName,
+      'emoji': phaseEmoji,
+      'icon': phaseIcon,
+      'percent': illuminationPercent,
+    };
+  }
+
   Future<void> _fetchWeatherAndSun() async {
     if (_lat == null || _lon == null) return;
 
     setState(() => _isLoadingWeather = true);
 
     try {
-      // FIX: Wir haben ',moon_phase' aus der URL gelöscht.
-      // Der Server hat das abgelehnt. Jetzt holen wir nur Sonne & Wetter.
       String urlString = 'https://api.open-meteo.com/v1/forecast?'
           'latitude=$_lat&longitude=$_lon'
           '&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m'
-          '&daily=sunrise,sunset' // HIER WAR DER FEHLER: moon_phase IST RAUS!
+          '&daily=sunrise,sunset'
           '&wind_speed_unit=kmh'
-          '&timezone=Europe/Berlin'; 
+          '&timezone=Europe/Berlin';
 
-      print("Rufe URL auf (Ohne Mond): $urlString"); 
-      
       final response = await http.get(Uri.parse(urlString));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
+
         // 1. Wetter
         String tmpTemp = "--°C";
         String tmpWindS = "--";
         String tmpWindD = "--";
         IconData tmpIcon = Icons.cloud_off;
-        
+
         try {
           final current = data['current'];
           tmpTemp = "${current['temperature_2m']}°C";
@@ -190,10 +246,11 @@ class _DashboardPageState extends State<DashboardPage> {
           tmpSet = rawSunset.contains('T') ? rawSunset.split('T').last : rawSunset;
         } catch (e) { print("Sonne Fehler: $e"); }
 
-        // 3. Mond (Dummy-Werte, damit UI nicht kaputt geht)
-        String tmpMoonTxt = "--";
-        String tmpMoonSub = "Keine Daten";
-        IconData tmpMoonIco = Icons.nightlight_round;
+        // 3. MOND - LOKALE BERECHNUNG!
+        final moonData = _calculateMoonPhase();
+        String tmpMoonTxt = moonData['emoji'];
+        String tmpMoonSub = "${moonData['name']} ${moonData['percent']}%";
+        IconData tmpMoonIco = moonData['icon'];
 
         setState(() {
           _weatherTemp = tmpTemp;
@@ -202,11 +259,11 @@ class _DashboardPageState extends State<DashboardPage> {
           _weatherIcon = tmpIcon;
           _sunriseTime = tmpRise;
           _sunsetTime = tmpSet;
-          
+
           _moonText = tmpMoonTxt;
           _moonSubText = tmpMoonSub;
           _moonIcon = tmpMoonIco;
-          
+
           _isLoadingWeather = false;
         });
 
@@ -256,97 +313,173 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- DASHBOARD ---
+            // --- OPTIMIERTES DASHBOARD - GRÖßER & ÜBERSICHTLICHER ---
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20), // Mehr Padding: 10/15 -> 16/20
               decoration: BoxDecoration(
                 color: boxColor,
                 borderRadius: BorderRadius.circular(25),
-                boxShadow: isGhost ? [] : [const BoxShadow(color: Colors.black12, blurRadius: 10)],
-                border: Border.all(color: isGhost ? Colors.red.withOpacity(0.5) : Colors.transparent),
+                boxShadow: isGhost ? [BoxShadow(color: Colors.red.withOpacity(0.2), blurRadius: 15)] : [const BoxShadow(color: Colors.black12, blurRadius: 15, spreadRadius: 2)],
+                border: Border.all(color: isGhost ? Colors.red.withOpacity(0.5) : Colors.green.withOpacity(0.3), width: 2),
               ),
-              child: _isLoadingWeather 
+              child: _isLoadingWeather
                 ? Center(child: CircularProgressIndicator(color: isGhost ? Colors.red : Colors.green))
                 : Column(
                   children: [
-                    // OBERE REIHE
+                    // OBERE REIHE - MEHR ABSTAND
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Temp
-                        Column(
-                          children: [
-                            Icon(_weatherIcon, size: 35, color: iconColor),
-                            const SizedBox(height: 5),
-                            Text(_weatherTemp, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
-                          ],
-                        ),
-                        
-                        // MOND
-                        Column(
-                          children: [
-                            Icon(_moonIcon, size: 30, color: isGhost ? Colors.red : Colors.blueGrey),
-                            const SizedBox(height: 5),
-                            Text(_moonText, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
-                            Text(_moonSubText, style: TextStyle(fontSize: 10, color: textColor.withOpacity(0.6))),
-                          ],
+                        // Temp - Größer
+                        _buildWeatherCard(
+                          _weatherIcon,
+                          _weatherTemp,
+                          "Temperatur",
+                          iconColor,
+                          textColor,
+                          isGhost,
                         ),
 
-                        // Wind
+                        // MOND - Mit Emoji!
+                        _buildWeatherCard(
+                          _moonIcon,
+                          _moonText,
+                          _moonSubText,
+                          isGhost ? Colors.red : Colors.blueGrey,
+                          textColor,
+                          isGhost,
+                        ),
+
+                        // Wind - Klickbar für Refresh
                         InkWell(
                           onTap: _fetchWeatherAndSun,
-                          child: Column(
-                            children: [
-                              Icon(Icons.air, size: 35, color: textColor.withOpacity(0.8)),
-                              const SizedBox(height: 5),
-                              Text(_windDir, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
-                              Text(_windSpeed, style: TextStyle(fontSize: 12, color: textColor)),
-                            ],
+                          borderRadius: BorderRadius.circular(15),
+                          child: _buildWeatherCard(
+                            Icons.air,
+                            _windDir,
+                            _windSpeed,
+                            textColor.withOpacity(0.8),
+                            textColor,
+                            isGhost,
                           ),
                         )
                       ],
                     ),
-                    
-                    const SizedBox(height: 15),
-                    Divider(color: textColor.withOpacity(0.2), thickness: 1),
-                    const SizedBox(height: 10),
 
-                    // UNTERE REIHE
+                    const SizedBox(height: 20), // Mehr Abstand: 15 -> 20
+                    Divider(color: textColor.withOpacity(0.3), thickness: 1.5), // Dicker
+                    const SizedBox(height: 15),
+
+                    // UNTERE REIHE - SONNE
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        _buildSunTime(Icons.wb_twilight, "Aufgang", _sunriseTime, textColor),
-                        Container(height: 30, width: 1, color: textColor.withOpacity(0.2)),
-                        _buildSunTime(Icons.nights_stay, "Untergang", _sunsetTime, textColor),
+                        _buildSunTime(Icons.wb_twilight, "Aufgang", _sunriseTime, textColor, isGhost),
+                        Container(height: 40, width: 2, color: textColor.withOpacity(0.3)), // Größer
+                        _buildSunTime(Icons.nights_stay, "Untergang", _sunsetTime, textColor, isGhost),
                       ],
                     ),
                   ],
                 ),
             ),
             
-            const SizedBox(height: 10),
-            Center(child: Text("Standort: $_locationMessage", style: TextStyle(color: isGhost ? Colors.grey : Colors.grey[600], fontSize: 12))),
+            const SizedBox(height: 12),
+            // VERBESSERTER STANDORT
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isGhost ? Colors.grey[850] : Colors.grey[100],
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(
+                  color: isGhost ? Colors.red.withOpacity(0.3) : Colors.green.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    color: isGhost ? Colors.red : Colors.green[700],
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      _locationMessage,
+                      style: TextStyle(
+                        color: isGhost ? Colors.grey : Colors.grey[700],
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
             
-            // --- HAUPT BUTTON ---
+            // --- ANIMIERTER HAUPT BUTTON ---
             Expanded(
               child: GestureDetector(
-                onTap: widget.toggleMode,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isGhost ? Colors.red.withOpacity(0.1) : Colors.green[100],
-                    border: Border.all(color: isGhost ? Colors.red : Colors.green, width: 4),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(isGhost ? Icons.visibility_off : Icons.visibility, size: 80, color: isGhost ? Colors.red : Colors.green[800]),
-                      const SizedBox(height: 20),
-                      Text(isGhost ? "JAGD BEENDEN" : "JAGD STARTEN", style: Theme.of(context).textTheme.displayLarge),
-                    ],
-                  ),
+                onTap: () {
+                  HapticFeedback.heavyImpact();
+                  widget.toggleMode();
+                },
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 1.0, end: isGhost ? 1.0 : 1.02),
+                  duration: const Duration(milliseconds: 1500),
+                  curve: Curves.easeInOut,
+                  builder: (context, scale, child) {
+                    return Transform.scale(
+                      scale: scale,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isGhost ? Colors.red.withOpacity(0.15) : Colors.green[100],
+                          border: Border.all(
+                            color: isGhost ? Colors.red : Colors.green,
+                            width: 4,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isGhost ? Colors.red : Colors.green).withOpacity(0.3),
+                              blurRadius: isGhost ? 10 : 20,
+                              spreadRadius: isGhost ? 0 : 2,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isGhost ? Icons.visibility_off : Icons.visibility,
+                              size: 90, // Größer: 80 -> 90
+                              color: isGhost ? Colors.red : Colors.green[800],
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              isGhost ? "JAGD BEENDEN" : "JAGD STARTEN",
+                              style: Theme.of(context).textTheme.displayLarge,
+                            ),
+                            if (!isGhost) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                "Antippen zum Starten",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.green[700],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -367,19 +500,67 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildSunTime(IconData icon, String label, String time, Color color) {
-    return Row(
-      children: [
-        Icon(icon, color: color.withOpacity(0.6), size: 24),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(fontSize: 10, color: color.withOpacity(0.6))),
-            Text(time, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-          ],
-        )
-      ],
+  // OPTIMIERTE WETTER-KARTE
+  Widget _buildWeatherCard(IconData icon, String mainText, String subText, Color iconColor, Color textColor, bool isGhost) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isGhost ? Colors.grey[850] : Colors.grey[50],
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: iconColor.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 42, color: iconColor), // Größer: 35 -> 42
+          const SizedBox(height: 8),
+          Text(
+            mainText,
+            style: TextStyle(
+              fontSize: 22, // Größer: 20 -> 22
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subText,
+            style: TextStyle(
+              fontSize: 11,
+              color: textColor.withOpacity(0.7),
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSunTime(IconData icon, String label, String time, Color color, bool isGhost) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isGhost ? Colors.grey[850] : Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color.withOpacity(0.7), size: 28), // Größer: 24 -> 28
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: TextStyle(fontSize: 11, color: color.withOpacity(0.6))),
+              Text(time, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)), // Größer: 14 -> 16
+            ],
+          )
+        ],
+      ),
     );
   }
 
