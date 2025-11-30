@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class BlatterPage extends StatefulWidget {
@@ -13,19 +14,21 @@ class BlatterPage extends StatefulWidget {
 class _BlatterPageState extends State<BlatterPage> {
   // Der Audio-Spieler
   final AudioPlayer _player = AudioPlayer();
-  
+
   // Status-Variablen für unseren Player
   bool _isPlaying = false;
   bool _isLooping = false;
   String? _currentTitle; // Welches Tier läuft gerade?
+  double _volume = 1.0; // Lautstärke (0.0 - 1.0)
 
+  // OPTIMIERTE TIER-LISTE MIT BESSEREN ICONS & FARBEN
   final List<Map<String, dynamic>> animals = [
-    {"name": "Hirsch", "icon": Icons.forest, "desc": "Röhren (Brunft)", "file": "hirsch.mp3"},
-    {"name": "Rehbock", "icon": Icons.pets, "desc": "Plätzen", "file": "rehbock.mp3"},
-    {"name": "Kitz", "icon": Icons.child_care, "desc": "Fiep-Laut", "file": "kitz.mp3"},
-    {"name": "Wildsau", "icon": Icons.grass, "desc": "Grunzen", "file": "wildsau.mp3"},
-    {"name": "Gemse", "icon": Icons.filter_hdr, "desc": "Warnpfiff", "file": "gemse.mp3"},
-    {"name": "Ente", "icon": Icons.waves, "desc": "Lockruf", "file": "ente.mp3"},
+    {"name": "Hirsch", "icon": Icons.place, "desc": "Röhren (Brunft)", "file": "hirsch.mp3", "color": Color(0xFF8B4513)}, // Braun
+    {"name": "Rehbock", "icon": Icons.nature, "desc": "Plätzen", "file": "rehbock.mp3", "color": Color(0xFFD2691E)}, // Hell-Braun
+    {"name": "Kitz", "icon": Icons.pets, "desc": "Fiep-Laut", "file": "kitz.mp3", "color": Color(0xFFDEB887)}, // Beige
+    {"name": "Wildsau", "icon": Icons.landscape, "desc": "Grunzen", "file": "wildsau.mp3", "color": Color(0xFF696969)}, // Dunkelgrau
+    {"name": "Gemse", "icon": Icons.terrain, "desc": "Warnpfiff", "file": "gemse.mp3", "color": Color(0xFF708090)}, // Schiefergrau
+    {"name": "Ente", "icon": Icons.water, "desc": "Lockruf", "file": "ente.mp3", "color": Color(0xFF4682B4)}, // Stahlblau
   ];
 
   @override
@@ -53,9 +56,10 @@ class _BlatterPageState extends State<BlatterPage> {
   Future<void> _playSound(String fileName, String title) async {
     try {
       await _player.stop(); // Erstmal Ruhe
+      await _player.setVolume(_volume); // Lautstärke setzen
       await _player.setReleaseMode(_isLooping ? ReleaseMode.loop : ReleaseMode.stop);
       await _player.play(AssetSource('sounds/$fileName'));
-      
+
       setState(() {
         _currentTitle = title;
         _isPlaying = true;
@@ -63,6 +67,14 @@ class _BlatterPageState extends State<BlatterPage> {
     } catch (e) {
       print("Fehler: $e");
     }
+  }
+
+  // Logik: Lautstärke ändern
+  Future<void> _setVolume(double volume) async {
+    await _player.setVolume(volume);
+    setState(() {
+      _volume = volume;
+    });
   }
 
   // Logik: Toggle Play/Pause
@@ -150,70 +162,152 @@ class _BlatterPageState extends State<BlatterPage> {
                 itemBuilder: (context, index) {
                   // Prüfen ob DIESES Tier gerade läuft (für visuelles Highlight)
                   bool isActive = _currentTitle == animals[index]['name'] && _isPlaying;
-                  
+
                   return _buildAnimalCard(
                     animals[index]['name'],
                     animals[index]['desc'],
                     animals[index]['icon'],
                     animals[index]['file'],
+                    animals[index]['color'], // Individuelle Farbe
                     cardColor,
                     textColor,
                     isGhost,
-                    isActive, // Neu: Sagen ob aktiv
+                    isActive,
                   );
                 },
               ),
             ),
           ),
 
-          // --- DER NEUE PLAYER BALKEN ---
-          // Er erscheint immer, wenn ein Titel ausgewählt wurde
+          // --- OPTIMIERTER PLAYER BALKEN MIT LAUTSTÄRKE ---
           if (_currentTitle != null)
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
                 color: isGhost ? Colors.grey[900] : Colors.white,
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -2))],
-                border: Border(top: BorderSide(color: isGhost ? Colors.red : Colors.green, width: 2)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, -3))
+                ],
+                border: Border(top: BorderSide(color: isGhost ? Colors.red : Colors.green, width: 3)),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(25),
+                  topRight: Radius.circular(25),
+                ),
               ),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Titel Info
-                  Text(
-                    "Aktuell: $_currentTitle",
-                    style: TextStyle(
-                      color: isGhost ? Colors.red : Colors.black87, 
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16
-                    ),
+                  // Titel Info mit Icon
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.music_note,
+                        color: isGhost ? Colors.red : Colors.green,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _currentTitle!,
+                        style: TextStyle(
+                          color: isGhost ? Colors.red : Colors.black87,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 16),
+
+                  // Steuerung
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       // Loop Button
-                      IconButton(
-                        onPressed: _toggleLoop,
-                        icon: Icon(Icons.repeat, color: _isLooping ? (isGhost ? Colors.red : Colors.green) : Colors.grey),
-                        tooltip: "Wiederholung",
-                      ),
-                      
-                      // Play / Pause Button (Groß)
-                      FloatingActionButton(
-                        onPressed: _togglePlayPause,
-                        backgroundColor: isGhost ? Colors.red : Colors.green,
-                        child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _isLooping
+                              ? (isGhost ? Colors.red : Colors.green).withOpacity(0.2)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          onPressed: _toggleLoop,
+                          icon: Icon(
+                            Icons.repeat,
+                            color: _isLooping
+                                ? (isGhost ? Colors.red : Colors.green)
+                                : Colors.grey,
+                            size: 28,
+                          ),
+                          tooltip: "Wiederholung",
+                        ),
                       ),
 
-                      // STOP BUTTON (Wichtig!)
+                      // Play / Pause Button (Größer)
+                      FloatingActionButton.large(
+                        onPressed: _togglePlayPause,
+                        backgroundColor: isGhost ? Colors.red : Colors.green,
+                        elevation: 8,
+                        child: Icon(
+                          _isPlaying ? Icons.pause : Icons.play_arrow,
+                          size: 40,
+                        ),
+                      ),
+
+                      // STOP BUTTON
                       IconButton(
                         onPressed: _stopSound,
-                        icon: const Icon(Icons.stop_circle_outlined, size: 32),
-                        color: isGhost ? Colors.redAccent : Colors.red,
-                        tooltip: "SOFORT STOPPEN",
+                        icon: const Icon(Icons.stop_circle, size: 36),
+                        color: isGhost ? Colors.redAccent : Colors.red[700],
+                        tooltip: "Stoppen",
                       ),
                     ],
-                  )
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // LAUTSTÄRKE-REGLER
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isGhost ? Colors.grey[850] : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _volume == 0 ? Icons.volume_off : Icons.volume_up,
+                          color: isGhost ? Colors.red : Colors.green,
+                          size: 24,
+                        ),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              activeTrackColor: isGhost ? Colors.red : Colors.green,
+                              inactiveTrackColor: Colors.grey[400],
+                              thumbColor: isGhost ? Colors.red : Colors.green,
+                              overlayColor: (isGhost ? Colors.red : Colors.green).withOpacity(0.2),
+                            ),
+                            child: Slider(
+                              value: _volume,
+                              min: 0.0,
+                              max: 1.0,
+                              onChanged: _setVolume,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          "${(_volume * 100).toInt()}%",
+                          style: TextStyle(
+                            color: isGhost ? Colors.grey : Colors.grey[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -222,36 +316,106 @@ class _BlatterPageState extends State<BlatterPage> {
     );
   }
 
-  Widget _buildAnimalCard(String title, String sub, IconData icon, String fileName, Color? bg, Color? text, bool isGhost, bool isActive) {
+  // OPTIMIERTE TIER-KARTE MIT INDIVIDUELLEN FARBEN
+  Widget _buildAnimalCard(
+    String title,
+    String sub,
+    IconData icon,
+    String fileName,
+    Color animalColor, // Individuelle Tierfarbe
+    Color? bgColor,
+    Color? textColor,
+    bool isGhost,
+    bool isActive,
+  ) {
     return GestureDetector(
       onTap: () {
+        HapticFeedback.mediumImpact(); // Haptisches Feedback
         _playSound(fileName, title);
       },
       child: Container(
         decoration: BoxDecoration(
-          color: isActive ? (isGhost ? Colors.red.withOpacity(0.2) : Colors.green[100]) : bg, // Highlight wenn aktiv
-          borderRadius: BorderRadius.circular(15),
+          // Gradient-Hintergrund mit Tierfarbe
+          gradient: LinearGradient(
+            colors: isActive
+                ? [
+                    animalColor.withOpacity(0.4),
+                    animalColor.withOpacity(0.2),
+                  ]
+                : [
+                    isGhost ? Colors.grey[850]! : Colors.white,
+                    isGhost ? Colors.grey[900]! : Colors.grey[50]!,
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            if (!isGhost) 
-              const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+            BoxShadow(
+              color: isActive ? animalColor.withOpacity(0.4) : Colors.black12,
+              blurRadius: isActive ? 12 : 6,
+              offset: Offset(0, isActive ? 4 : 2),
+            )
           ],
           border: Border.all(
-            color: isActive 
-                ? (isGhost ? Colors.red : Colors.green) 
-                : (isGhost ? Colors.red.withOpacity(0.5) : Colors.transparent),
-            width: isActive ? 3 : 1
+            color: isActive ? animalColor : animalColor.withOpacity(0.3),
+            width: isActive ? 3 : 2,
           ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 40, color: isGhost ? Colors.red : Colors.green[700]),
-            const SizedBox(height: 10),
-            Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: text)),
-            Text(sub, style: TextStyle(fontSize: 14, color: isGhost ? Colors.red.withOpacity(0.7) : Colors.grey[600])),
+            // Icon mit farbigem Hintergrund
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: animalColor.withOpacity(isActive ? 0.3 : 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 48, // Größer: 40 -> 48
+                color: animalColor,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 19, // Größer: 20 -> 19 (besser lesbar)
+                fontWeight: FontWeight.bold,
+                color: isGhost ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              sub,
+              style: TextStyle(
+                fontSize: 13, // Größer: 14 -> 13
+                color: isGhost
+                    ? Colors.grey[400]
+                    : Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
             if (isActive) ...[
-              const SizedBox(height: 5),
-              Icon(Icons.equalizer, color: isGhost ? Colors.red : Colors.green, size: 20) // Kleines Equalizer Icon
+              const SizedBox(height: 8),
+              // Animierter Equalizer
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.graphic_eq, color: animalColor, size: 24),
+                  const SizedBox(width: 4),
+                  Text(
+                    "SPIELT",
+                    style: TextStyle(
+                      color: animalColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             ]
           ],
         ),
