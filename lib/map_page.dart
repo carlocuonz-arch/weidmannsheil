@@ -500,28 +500,31 @@ class _MapPageState extends State<MapPage> {
                   ),
                   if (_manualSelection) Positioned(top: 10, right: 10, child: FloatingActionButton.small(backgroundColor: Colors.white, onPressed: _resetToGPS, child: Icon(Icons.my_location, color: Colors.blue))),
 
-                  // Kompass Overlay (oben links)
+                  // Kompass Overlay (oben links) - GRÖßER & BESSER SICHTBAR
                   Positioned(
                     top: 10,
                     left: 10,
                     child: Container(
-                      width: 60,
-                      height: 60,
+                      width: 70,
+                      height: 70,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withOpacity(0.95),
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        boxShadow: [
+                          BoxShadow(color: Colors.black38, blurRadius: 8, spreadRadius: 1)
+                        ],
+                        border: Border.all(color: Colors.red, width: 2),
                       ),
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
                           Transform.rotate(
                             angle: (_compassHeading * (math.pi / 180) * -1),
-                            child: Icon(Icons.navigation, color: Colors.red, size: 40),
+                            child: Icon(Icons.navigation, color: Colors.red, size: 45),
                           ),
                           Positioned(
-                            top: 5,
-                            child: Text('N', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            top: 8,
+                            child: Text('N', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
                           ),
                         ],
                       ),
@@ -569,9 +572,38 @@ class _MapPageState extends State<MapPage> {
     );
   }
   
-  Widget _trackingBtn(String label, IconData icon, Color color, VoidCallback onTap) { return Column(children: [ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: const CircleBorder(), padding: const EdgeInsets.all(20), elevation: 5), onPressed: onTap, child: Icon(icon, color: color, size: 30)), const SizedBox(height: 5), Text(label, style: const TextStyle(fontWeight: FontWeight.bold))]); }
+  // OPTIMIERTE TRACKING BUTTONS - GRÖßER & FARBIGER
+  Widget _trackingBtn(String label, IconData icon, Color color, VoidCallback onTap) {
+    return Column(
+      children: [
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: color.withOpacity(0.2),
+            shape: const CircleBorder(),
+            padding: const EdgeInsets.all(25), // Größer: 20 -> 25
+            elevation: 8, // Mehr Schatten: 5 -> 8
+            side: BorderSide(color: color, width: 3), // Farbiger Rahmen
+          ),
+          onPressed: () {
+            HapticFeedback.mediumImpact(); // Haptisches Feedback
+            onTap();
+          },
+          child: Icon(icon, color: color, size: 35), // Größer: 30 -> 35
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
 
-  // --- KOMPAKTES DESIGN (MIT FOTO) ---
+  // --- OPTIMIERTES DESIGN - GRÖßERE TOUCH-TARGETS & BESSERE FARBEN ---
   Widget _buildLogCard(MapEntry e, bool isGhost) {
     final dateStr = DateFormat('dd.MM. HH:mm').format(e.timestamp);
     final cardColor = isGhost ? Colors.grey[900] : Colors.white;
@@ -584,34 +616,58 @@ class _MapPageState extends State<MapPage> {
     final altDisplay = e.altitude == 0.0 ? "--" : "${e.altitude.toInt()}m";
 
     return Card(
-      elevation: 2, margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      elevation: 4, // Mehr Schatten: 2 -> 4
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 6), // Mehr Abstand: 4 -> 6
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: cardColor,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: accentColor!, width: 4))),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14), // Größer: 8/12 -> 12/14
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: accentColor!, // Rundherum Rahmen statt nur links
+            width: 2.5,
+          ),
+          // Farbiger Hintergrund-Akzent
+          gradient: LinearGradient(
+            colors: [
+              accentColor.withOpacity(0.08),
+              cardColor!,
+            ],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-                Icon(e.isKill ? Icons.gps_fixed : Icons.visibility, color: accentColor, size: 20),
-                const SizedBox(width: 8),
-                Expanded( // Tiername bekommt Platz
-                  child: Text(e.animal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor), overflow: TextOverflow.ellipsis),
+                Icon(e.isKill ? Icons.gps_fixed : Icons.visibility, color: accentColor, size: 24), // Größer: 20 -> 24
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    e.animal,
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: textColor), // Größer: 16 -> 17
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                
-                // --- FOTO THUMBNAIL (NEU!) ---
+
+                // --- FOTO THUMBNAIL - GRÖßER! ---
                 if (e.imagePath != null && File(e.imagePath!).existsSync())
                   GestureDetector(
                     onTap: () => _showFullImage(e.imagePath!),
                     child: Container(
-                      width: 40, height: 30,
+                      width: 50, // Größer: 40 -> 50
+                      height: 40, // Größer: 30 -> 40
                       margin: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: accentColor, width: 2), // Farbiger Rahmen
+                        borderRadius: BorderRadius.circular(6),
                         image: DecorationImage(image: FileImage(File(e.imagePath!)), fit: BoxFit.cover),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 2)),
+                        ],
                       ),
                     ),
                   ),
@@ -625,8 +681,16 @@ class _MapPageState extends State<MapPage> {
                 Text(dateStr, style: TextStyle(color: subTextColor, fontSize: 11)),
               ]),
             if (e.note.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Padding(padding: const EdgeInsets.only(left: 28), child: Text(e.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 12, fontStyle: FontStyle.italic))),
+              const SizedBox(height: 6), // Mehr Abstand: 4 -> 6
+              Padding(
+                padding: const EdgeInsets.only(left: 34), // Mehr Einzug: 28 -> 34
+                child: Text(
+                  e.note,
+                  maxLines: 2, // Mehr Zeilen: 1 -> 2
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 12, fontStyle: FontStyle.italic),
+                ),
+              ),
             ]
           ],
         ),
