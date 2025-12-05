@@ -541,9 +541,32 @@ class _MapPageState extends State<MapPage> {
                   ? Center(child: Text("Logbuch leer", style: TextStyle(color: isGhost ? Colors.grey : Colors.grey[700])))
                   : ListView.builder(
                       itemCount: _entries.length,
-                      padding: const EdgeInsets.only(top: 0, bottom: 300), 
+                      padding: const EdgeInsets.only(top: 0, bottom: 300),
+                      physics: const ClampingScrollPhysics(), // Bessere Touch-Interaktion auf Android
                       itemBuilder: (context, index) {
-                        return Dismissible(key: UniqueKey(), onDismissed: (_) => _deleteEntry(index), background: Container(color: Colors.red, child: const Icon(Icons.delete, color: Colors.white)), child: _buildLogCard(_entries[index], isGhost));
+                        return Dismissible(
+                          key: UniqueKey(),
+                          direction: DismissDirection.horizontal, // Nur horizontal swipen
+                          dismissThresholds: const {
+                            DismissDirection.endToStart: 0.4, // 40% reicht zum Löschen
+                            DismissDirection.startToEnd: 0.4,
+                          },
+                          movementDuration: const Duration(milliseconds: 200),
+                          onDismissed: (_) => _deleteEntry(index),
+                          background: Container(
+                            color: Colors.red,
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.only(left: 20),
+                            child: const Icon(Icons.delete, color: Colors.white)
+                          ),
+                          secondaryBackground: Container(
+                            color: Colors.red,
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            child: const Icon(Icons.delete, color: Colors.white)
+                          ),
+                          child: _buildLogCard(_entries[index], isGhost)
+                        );
                       },
                     ),
             ),
@@ -603,15 +626,19 @@ class _MapPageState extends State<MapPage> {
                 
                 // --- FOTO THUMBNAIL (NEU!) ---
                 if (e.imagePath != null && File(e.imagePath!).existsSync())
-                  GestureDetector(
-                    onTap: () => _showFullImage(e.imagePath!),
-                    child: Container(
-                      width: 40, height: 30,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(4),
-                        image: DecorationImage(image: FileImage(File(e.imagePath!)), fit: BoxFit.cover),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _showFullImage(e.imagePath!),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        width: 40, height: 30,
+                        margin: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey, width: 2),
+                          borderRadius: BorderRadius.circular(4),
+                          image: DecorationImage(image: FileImage(File(e.imagePath!)), fit: BoxFit.cover),
+                        ),
                       ),
                     ),
                   ),
