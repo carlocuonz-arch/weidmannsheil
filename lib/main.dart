@@ -51,18 +51,26 @@ class WeidmannsheilApp extends StatefulWidget {
 
 class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   bool _isGhostMode = false;
+  static const platform = MethodChannel('com.weidmannsheil/audio');
 
-  void _toggleGhostMode() {
+  Future<void> _toggleGhostMode() async {
     setState(() {
       _isGhostMode = !_isGhostMode;
     });
 
+    // Native Ringer-Kontrolle aufrufen
+    try {
+      await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+    } catch (e) {
+      print("Fehler beim Setzen des Ghost Mode: $e");
+    }
+
     if (_isGhostMode) {
-      // Ghost Mode aktiviert - Zeige Hinweis
+      // Ghost Mode aktiviert
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text("🦌 Ghost Mode aktiviert\n\n💡 TIPP: Schalten Sie Ihr Handy manuell stumm (Lautstärketaste halten), damit nur die Tierlaute zu hören sind!"),
-          duration: const Duration(seconds: 5),
+          content: const Text("🦌 Ghost Mode aktiviert\n📵 Anrufe & Benachrichtigungen stumm\n🔊 Tierlaute aktiv"),
+          duration: const Duration(seconds: 3),
           backgroundColor: Colors.red[900],
           action: SnackBarAction(
             label: "OK",
@@ -75,8 +83,8 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       // Ghost Mode deaktiviert
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("✅ Normal Mode"),
-          duration: Duration(seconds: 1),
+          content: Text("✅ Normal Mode\n🔔 Alle Töne wieder aktiv"),
+          duration: Duration(seconds: 2),
           backgroundColor: Colors.green,
         ),
       );
