@@ -51,7 +51,25 @@ class WeidmannsheilApp extends StatefulWidget {
 
 class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   bool _isGhostMode = false;
+  String _ringerStatus = "UNKNOWN";
   static const platform = MethodChannel('com.weidmannsheil/audio');
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRingerStatus();
+  }
+
+  Future<void> _checkRingerStatus() async {
+    try {
+      final String status = await platform.invokeMethod('getRingerMode');
+      setState(() {
+        _ringerStatus = status;
+      });
+    } catch (e) {
+      print("Fehler beim Abrufen des Ringer-Status: $e");
+    }
+  }
 
   Future<void> _toggleGhostMode() async {
     setState(() {
@@ -61,6 +79,8 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
     // Native Ringer-Kontrolle aufrufen
     try {
       await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+      // Status nach dem Toggle prüfen
+      await _checkRingerStatus();
     } catch (e) {
       print("Fehler beim Setzen des Ghost Mode: $e");
     }
@@ -69,7 +89,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       // Ghost Mode aktiviert
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text("🦌 Ghost Mode aktiviert\n📵 Anrufe & Benachrichtigungen stumm\n🔊 Tierlaute aktiv"),
+          content: Text("🦌 Ghost Mode aktiviert\n📵 Ringer: $_ringerStatus\n🔊 Tierlaute aktiv"),
           duration: const Duration(seconds: 3),
           backgroundColor: Colors.red[900],
           action: SnackBarAction(
@@ -82,8 +102,8 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
     } else {
       // Ghost Mode deaktiviert
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("✅ Normal Mode\n🔔 Alle Töne wieder aktiv"),
+        SnackBar(
+          content: Text("✅ Normal Mode\n🔔 Ringer: $_ringerStatus"),
           duration: Duration(seconds: 2),
           backgroundColor: Colors.green,
         ),
@@ -101,6 +121,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       theme: _isGhostMode ? HunterTheme.ghostMode : HunterTheme.normal,
       home: DashboardPage(
         isGhostMode: _isGhostMode,
+        ringerStatus: _ringerStatus,
         toggleMode: _toggleGhostMode,
       ),
     );
@@ -109,9 +130,10 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
 
 class DashboardPage extends StatefulWidget {
   final bool isGhostMode;
+  final String ringerStatus;
   final VoidCallback toggleMode;
 
-  const DashboardPage({super.key, required this.isGhostMode, required this.toggleMode});
+  const DashboardPage({super.key, required this.isGhostMode, required this.ringerStatus, required this.toggleMode});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -232,10 +254,11 @@ class _DashboardPageState extends State<DashboardPage> {
           tmpSet = rawSunset.contains('T') ? rawSunset.split('T').last : rawSunset;
         } catch (e) { print("Sonne Fehler: $e"); }
 
-        // 3. Mond (Dummy-Werte, damit UI nicht kaputt geht)
-        String tmpMoonTxt = "--";
-        String tmpMoonSub = "Keine Daten";
-        IconData tmpMoonIco = Icons.nightlight_round;
+        // 3. Mond (Phasenberechnung)
+        final moonData = _calculateMoonPhase();
+        String tmpMoonTxt = moonData['text'];
+        String tmpMoonSub = moonData['subText'];
+        IconData tmpMoonIco = moonData['icon'];
 
         setState(() {
           _weatherTemp = tmpTemp;
@@ -288,6 +311,63 @@ class _DashboardPageState extends State<DashboardPage> {
     if (code >= 71 && code <= 77) return "Schnee";
     if (code >= 95) return "Gewitter";
     return "Bewölkt";
+  }
+
+  // Mondphasenberechnung
+  Map<String, dynamic> _calculateMoonPhase() {
+    final now = DateTime.now();
+    // Referenz: 6. Januar 2000, 18:14 UTC war Neumond
+    final knownNewMoon = DateTime.utc(2000, 1, 6, 18, 14);
+    final daysSinceNew = now.difference(knownNewMoon).inMilliseconds / (1000 * 60 * 60 * 24);
+    final synodicMonth = 29.53058867; // Länge eines synodischen Monats in Tagen
+    final phase = (daysSinceNew % synodicMonth) / synodicMonth;
+
+    String text;
+    String subText;
+    IconData icon;
+
+    if (phase < 0.03 || phase >= 0.97) {
+      text = "●";
+      subText = "Neumond";
+      icon = Icons.brightness_1;
+    } else if (phase < 0.22) {
+      text = "☽";
+      subText = "Zunehmend";
+      icon = Icons.nightlight;
+    } else if (phase < 0.28) {
+      text = "◐";
+      subText = "Erstes Viertel";
+      icon = Icons.brightness_2;
+    } else if (phase < 0.47) {
+      text = "◑";
+      subText = "Zunehmend";
+      icon = Icons.brightness_3;
+    } else if (phase < 0.53) {
+      text = "○";
+      subText = "Vollmond";
+      icon = Icons.brightness_1_outlined;
+    } else if (phase < 0.72) {
+      text = "◐";
+      subText = "Abnehmend";
+      icon = Icons.brightness_3;
+    } else if (phase < 0.78) {
+      text = "◑";
+      subText = "Letztes Viertel";
+      icon = Icons.brightness_2;
+    } else {
+      text = "☾";
+      subText = "Abnehmend";
+      icon = Icons.nightlight_round;
+    }
+
+    // Beleuchtungsgrad berechnen
+    final illumination = (0.5 * (1 - math.cos(2 * math.pi * phase)) * 100).round();
+
+    return {
+      'text': text,
+      'subText': '$subText $illumination%',
+      'icon': icon,
+    };
   }
 
   // --- WETTER DETAIL DIALOG (3-TAGE-VORHERSAGE) ---
@@ -559,6 +639,52 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // --- RINGER STATUS ANZEIGE ---
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: widget.ringerStatus == "SILENT"
+                    ? (isGhost ? Colors.red[900] : Colors.orange[700])
+                    : (widget.ringerStatus == "NORMAL" ? Colors.green[700] : Colors.grey[700]),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: widget.ringerStatus == "SILENT" ? Colors.red : Colors.green,
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (widget.ringerStatus == "SILENT" ? Colors.red : Colors.green).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    widget.ringerStatus == "SILENT" ? Icons.phone_disabled :
+                    widget.ringerStatus == "VIBRATE" ? Icons.vibration :
+                    widget.ringerStatus == "NORMAL" ? Icons.phone_enabled : Icons.help_outline,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    widget.ringerStatus == "SILENT" ? "🔕 HANDY STUMM" :
+                    widget.ringerStatus == "VIBRATE" ? "📳 VIBRATION" :
+                    widget.ringerStatus == "NORMAL" ? "🔔 KLINGELN AN" : "❓ STATUS UNBEKANNT",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             // --- DASHBOARD ---
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
