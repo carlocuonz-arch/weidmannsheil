@@ -72,17 +72,75 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   }
 
   Future<void> _toggleGhostMode() async {
+    if (!_isGhostMode) {
+      // Ghost Mode aktivieren - zuerst Permission prüfen
+      try {
+        final bool hasPermission = await platform.invokeMethod('hasDoNotDisturbPermission');
+
+        if (!hasPermission) {
+          // Keine Permission - User auffordern
+          final shouldRequest = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text("Berechtigung erforderlich"),
+              content: const Text(
+                "Um Anrufe stumm zu schalten, benötigt Waidmannsheil die Berechtigung für \"Nicht stören\".\n\n"
+                "Tippen Sie auf OK, um zu den Einstellungen zu gelangen und die Berechtigung zu erteilen."
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text("Abbrechen"),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text("OK"),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldRequest == true) {
+            await platform.invokeMethod('requestDoNotDisturbPermission');
+          }
+          return; // Nicht weiter fortfahren
+        }
+      } catch (e) {
+        print("Fehler beim Prüfen der Permission: $e");
+      }
+    }
+
     setState(() {
       _isGhostMode = !_isGhostMode;
     });
 
     // Native Ringer-Kontrolle aufrufen
     try {
-      await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+      final bool success = await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+
+      if (!success && _isGhostMode) {
+        // Fehlgeschlagen - zurücksetzen
+        setState(() {
+          _isGhostMode = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("❌ Ghost Mode konnte nicht aktiviert werden.\nBitte Berechtigung in den Einstellungen erteilen."),
+            duration: Duration(seconds: 4),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
       // Status nach dem Toggle prüfen
       await _checkRingerStatus();
     } catch (e) {
       print("Fehler beim Setzen des Ghost Mode: $e");
+      setState(() {
+        _isGhostMode = false;
+      });
+      return;
     }
 
     if (_isGhostMode) {
