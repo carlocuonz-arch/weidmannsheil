@@ -57,54 +57,75 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   @override
   void initState() {
     super.initState();
-    _checkRingerStatus();
+    // Status nach dem ersten Frame prüfen, nicht sofort
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkRingerStatus();
+    });
   }
 
   Future<void> _checkRingerStatus() async {
     try {
       final String status = await platform.invokeMethod('getRingerMode');
-      setState(() {
-        _ringerStatus = status;
-      });
+      if (mounted) {
+        setState(() {
+          _ringerStatus = status;
+        });
+      }
     } catch (e) {
       print("Fehler beim Abrufen des Ringer-Status: $e");
+      // Fehler nicht weiter behandeln - App soll trotzdem funktionieren
     }
   }
 
-  Future<void> _toggleGhostMode() async {
+  Future<void> _toggleGhostMode(BuildContext dialogContext) async {
+    print("🎯 _toggleGhostMode aufgerufen! Aktueller Ghost Mode: $_isGhostMode");
+
+    print("🔄 Ändere Ghost Mode Status...");
     setState(() {
       _isGhostMode = !_isGhostMode;
     });
 
     // Native Ringer-Kontrolle aufrufen
+    print("📞 Rufe setGhostMode auf mit enable: $_isGhostMode");
     try {
       await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+      print("✅ setGhostMode erfolgreich aufgerufen");
+
       // Status nach dem Toggle prüfen
+      print("🔄 Prüfe Ringer Status...");
       await _checkRingerStatus();
     } catch (e) {
-      print("Fehler beim Setzen des Ghost Mode: $e");
+      print("❌ FEHLER beim Setzen des Ghost Mode: $e");
+      setState(() {
+        _isGhostMode = false;
+      });
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        SnackBar(
+          content: Text("Fehler: $e"),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
     }
+
+    print("🎉 Ghost Mode erfolgreich geändert zu: $_isGhostMode");
 
     if (_isGhostMode) {
       // Ghost Mode aktiviert
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
         SnackBar(
-          content: Text("🦌 Ghost Mode aktiviert\n📵 Ringer: $_ringerStatus\n🔊 Tierlaute aktiv"),
-          duration: const Duration(seconds: 3),
+          content: const Text("🦌 GHOST MODE AKTIVIERT\n🔕 Anrufe stumm | 🔊 Tierlaute aktiv"),
+          duration: const Duration(seconds: 2),
           backgroundColor: Colors.red[900],
-          action: SnackBarAction(
-            label: "OK",
-            textColor: Colors.white,
-            onPressed: () {},
-          ),
         ),
       );
     } else {
       // Ghost Mode deaktiviert
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("✅ Normal Mode\n🔔 Ringer: $_ringerStatus"),
-          duration: Duration(seconds: 2),
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        const SnackBar(
+          content: Text("✅ NORMAL MODE"),
+          duration: Duration(seconds: 1),
           backgroundColor: Colors.green,
         ),
       );
@@ -131,7 +152,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
 class DashboardPage extends StatefulWidget {
   final bool isGhostMode;
   final String ringerStatus;
-  final VoidCallback toggleMode;
+  final Function(BuildContext) toggleMode;
 
   const DashboardPage({super.key, required this.isGhostMode, required this.ringerStatus, required this.toggleMode});
 
@@ -639,52 +660,40 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- RINGER STATUS ANZEIGE ---
-            Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: widget.ringerStatus == "SILENT"
-                    ? (isGhost ? Colors.red[900] : Colors.orange[700])
-                    : (widget.ringerStatus == "NORMAL" ? Colors.green[700] : Colors.grey[700]),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: widget.ringerStatus == "SILENT" ? Colors.red : Colors.green,
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (widget.ringerStatus == "SILENT" ? Colors.red : Colors.green).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    widget.ringerStatus == "SILENT" ? Icons.phone_disabled :
-                    widget.ringerStatus == "VIBRATE" ? Icons.vibration :
-                    widget.ringerStatus == "NORMAL" ? Icons.phone_enabled : Icons.help_outline,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    widget.ringerStatus == "SILENT" ? "🔕 HANDY STUMM" :
-                    widget.ringerStatus == "VIBRATE" ? "📳 VIBRATION" :
-                    widget.ringerStatus == "NORMAL" ? "🔔 KLINGELN AN" : "❓ STATUS UNBEKANNT",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
+            // --- RINGER STATUS ANZEIGE (nur im Ghost Mode) ---
+            if (isGhost)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.red[900],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.red.withOpacity(0.4),
+                      blurRadius: 10,
+                      offset: Offset(0, 3),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.phone_disabled, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    Text(
+                      "🔕 LAUTLOS-MODUS",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             // --- DASHBOARD ---
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
@@ -780,7 +789,10 @@ class _DashboardPageState extends State<DashboardPage> {
             // --- HAUPT BUTTON ---
             Expanded(
               child: GestureDetector(
-                onTap: widget.toggleMode,
+                onTap: () {
+                  print("🖱️ JAGD STARTEN Button geklickt!");
+                  widget.toggleMode(context);
+                },
                 child: Container(
                   decoration: BoxDecoration(
                     color: isGhost ? Colors.red.withOpacity(0.1) : Colors.green[100],
