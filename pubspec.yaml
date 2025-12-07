@@ -26,7 +26,7 @@ dependencies:
   flutter_compass: ^0.8.1
   torch_light: ^1.1.0
   image_picker: ^1.2.1
-  sound_mode: ^2.0.2
+  volume_controller: ^2.0.7
 
 dev_dependencies:
   flutter_test:

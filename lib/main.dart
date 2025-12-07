@@ -5,8 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:sound_mode/sound_mode.dart';
-import 'package:sound_mode/utils/ringer_mode_statuses.dart';
+import 'package:volume_controller/volume_controller.dart';
 import 'blatter_page.dart';
 import 'map_page.dart';
 
@@ -52,30 +51,32 @@ class WeidmannsheilApp extends StatefulWidget {
 
 class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   bool _isGhostMode = false;
-  RingerModeStatus? _previousRingerMode;
+  double? _previousVolume;
+  final VolumeController _volumeController = VolumeController();
 
   Future<void> _toggleGhostMode() async {
     try {
       if (!_isGhostMode) {
         // Ghost Mode aktivieren - Handy stumm schalten
         try {
-          // Aktuellen Ringer-Mode speichern
-          _previousRingerMode = await SoundMode.ringerModeStatus;
+          // Aktuelle Lautstärke speichern
+          _previousVolume = await _volumeController.getVolume();
 
-          // Stumm schalten (Silent Mode)
-          await SoundMode.setSoundMode(RingerModeStatus.silent);
+          // Stumm schalten (Lautstärke auf 0 setzen)
+          // Dies setzt die System-Lautstärke auf 0, aber Medien (Tierlaute) funktionieren weiterhin
+          await _volumeController.setVolume(0);
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text("🦌 Ghost Mode: Handy stumm geschaltet"),
+                content: Text("🦌 Ghost Mode: Klingelton stumm geschaltet"),
                 duration: Duration(seconds: 2),
                 backgroundColor: Colors.red,
               ),
             );
           }
         } catch (e) {
-          print("Sound Mode Fehler: $e");
+          print("Volume Fehler: $e");
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -88,21 +89,21 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       } else {
         // Ghost Mode deaktivieren - Normaler Modus wiederherstellen
         try {
-          // Vorherigen Ringer-Mode wiederherstellen oder Normal setzen
-          final modeToRestore = _previousRingerMode ?? RingerModeStatus.normal;
-          await SoundMode.setSoundMode(modeToRestore);
+          // Vorherige Lautstärke wiederherstellen (oder 0.5 als Standard)
+          final volumeToRestore = _previousVolume ?? 0.5;
+          await _volumeController.setVolume(volumeToRestore);
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text("✅ Normal Mode: Ton wiederhergestellt"),
+                content: Text("✅ Normal Mode: Lautstärke wiederhergestellt"),
                 duration: Duration(seconds: 2),
                 backgroundColor: Colors.green,
               ),
             );
           }
         } catch (e) {
-          print("Sound Mode Fehler: $e");
+          print("Volume Fehler: $e");
         }
       }
     } catch (e) {
