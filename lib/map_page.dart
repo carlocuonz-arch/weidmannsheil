@@ -542,28 +542,31 @@ class _MapPageState extends State<MapPage> {
                   : ListView.builder(
                       itemCount: _entries.length,
                       padding: const EdgeInsets.only(top: 0, bottom: 300),
-                      physics: const ClampingScrollPhysics(), // Bessere Touch-Interaktion auf Android
+                      physics: const BouncingScrollPhysics(), // Verhindert Konflikte mit Swipe-Gesten
                       itemBuilder: (context, index) {
                         return Dismissible(
-                          key: UniqueKey(),
-                          direction: DismissDirection.horizontal, // Nur horizontal swipen
+                          key: ValueKey(_entries[index].timestamp.millisecondsSinceEpoch), // Stabiler Key
+                          direction: DismissDirection.horizontal,
                           dismissThresholds: const {
-                            DismissDirection.endToStart: 0.4, // 40% reicht zum Löschen
-                            DismissDirection.startToEnd: 0.4,
+                            DismissDirection.endToStart: 0.3,
+                            DismissDirection.startToEnd: 0.3,
                           },
-                          movementDuration: const Duration(milliseconds: 200),
+                          confirmDismiss: (direction) async {
+                            // Bestätigung hinzufügen
+                            return true;
+                          },
                           onDismissed: (_) => _deleteEntry(index),
                           background: Container(
                             color: Colors.red,
                             alignment: Alignment.centerLeft,
                             padding: const EdgeInsets.only(left: 20),
-                            child: const Icon(Icons.delete, color: Colors.white)
+                            child: const Icon(Icons.delete, color: Colors.white, size: 32)
                           ),
                           secondaryBackground: Container(
                             color: Colors.red,
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 20),
-                            child: const Icon(Icons.delete, color: Colors.white)
+                            child: const Icon(Icons.delete, color: Colors.white, size: 32)
                           ),
                           child: _buildLogCard(_entries[index], isGhost)
                         );
@@ -607,12 +610,16 @@ class _MapPageState extends State<MapPage> {
     final altDisplay = e.altitude == 0.0 ? "--" : "${e.altitude.toInt()}m";
 
     return Card(
-      elevation: 2, margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       color: cardColor,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: accentColor!, width: 4))),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border(left: BorderSide(color: accentColor!, width: 4))
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -620,24 +627,29 @@ class _MapPageState extends State<MapPage> {
             Row(children: [
                 Icon(e.isKill ? Icons.gps_fixed : Icons.visibility, color: accentColor, size: 20),
                 const SizedBox(width: 8),
-                Expanded( // Tiername bekommt Platz
-                  child: Text(e.animal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor), overflow: TextOverflow.ellipsis),
+                Expanded(
+                  child: Text(
+                    e.animal,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                    overflow: TextOverflow.ellipsis
+                  ),
                 ),
-                
-                // --- FOTO THUMBNAIL (NEU!) ---
+
+                // --- FOTO THUMBNAIL - Blockiert KEINE Swipe-Gesten mehr ---
                 if (e.imagePath != null && File(e.imagePath!).existsSync())
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _showFullImage(e.imagePath!),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Container(
-                        width: 40, height: 30,
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey, width: 2),
-                          borderRadius: BorderRadius.circular(4),
-                          image: DecorationImage(image: FileImage(File(e.imagePath!)), fit: BoxFit.cover),
+                  GestureDetector(
+                    onTap: () => _showFullImage(e.imagePath!),
+                    behavior: HitTestBehavior.opaque, // Nur auf den Container reagieren
+                    child: Container(
+                      width: 40,
+                      height: 30,
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey, width: 2),
+                        borderRadius: BorderRadius.circular(4),
+                        image: DecorationImage(
+                          image: FileImage(File(e.imagePath!)),
+                          fit: BoxFit.cover
                         ),
                       ),
                     ),
@@ -645,15 +657,29 @@ class _MapPageState extends State<MapPage> {
                 // -----------------------------
 
                 // Wetter Daten
-                _buildCompactStat(Icons.terrain, altDisplay, subTextColor!), const SizedBox(width: 8),
-                _buildCompactStat(Icons.thermostat, temp, subTextColor), const SizedBox(width: 8),
+                _buildCompactStat(Icons.terrain, altDisplay, subTextColor!),
+                const SizedBox(width: 8),
+                _buildCompactStat(Icons.thermostat, temp, subTextColor),
+                const SizedBox(width: 8),
                 _buildCompactStat(Icons.air, wind, subTextColor),
                 const SizedBox(width: 8),
                 Text(dateStr, style: TextStyle(color: subTextColor, fontSize: 11)),
               ]),
             if (e.note.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Padding(padding: const EdgeInsets.only(left: 28), child: Text(e.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 12, fontStyle: FontStyle.italic))),
+              Padding(
+                padding: const EdgeInsets.only(left: 28),
+                child: Text(
+                  e.note,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: textColor.withOpacity(0.7),
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic
+                  )
+                )
+              ),
             ]
           ],
         ),
