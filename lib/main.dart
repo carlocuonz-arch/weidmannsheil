@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:volume_controller/volume_controller.dart';
 import 'blatter_page.dart';
 import 'map_page.dart';
 
@@ -52,68 +51,37 @@ class WeidmannsheilApp extends StatefulWidget {
 
 class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   bool _isGhostMode = false;
-  double? _previousVolume;
-  final VolumeController _volumeController = VolumeController();
 
-  Future<void> _toggleGhostMode() async {
-    try {
-      if (!_isGhostMode) {
-        // Ghost Mode aktivieren - Handy stumm schalten
-        try {
-          // Aktuelle Lautstärke speichern
-          _previousVolume = await _volumeController.getVolume();
-
-          // Stumm schalten (Lautstärke auf 0 setzen)
-          // Dies setzt die System-Lautstärke auf 0, aber Medien (Tierlaute) funktionieren weiterhin
-          _volumeController.setVolume(0);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("🦌 Ghost Mode: Klingelton stumm geschaltet"),
-                duration: Duration(seconds: 2),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } catch (e) {
-          print("Volume Fehler: $e");
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("⚠️ Stumm-Modus nicht verfügbar"),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        }
-      } else {
-        // Ghost Mode deaktivieren - Normaler Modus wiederherstellen
-        try {
-          // Vorherige Lautstärke wiederherstellen (oder 0.5 als Standard)
-          final volumeToRestore = _previousVolume ?? 0.5;
-          _volumeController.setVolume(volumeToRestore);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("✅ Normal Mode: Lautstärke wiederhergestellt"),
-                duration: Duration(seconds: 2),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        } catch (e) {
-          print("Volume Fehler: $e");
-        }
-      }
-    } catch (e) {
-      print("Ghost Mode Toggle Fehler: $e");
-    }
-
+  void _toggleGhostMode() {
     setState(() {
       _isGhostMode = !_isGhostMode;
     });
+
+    if (_isGhostMode) {
+      // Ghost Mode aktiviert - Zeige Hinweis
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text("🦌 Ghost Mode aktiviert\n\n💡 TIPP: Schalten Sie Ihr Handy manuell stumm (Lautstärketaste halten), damit nur die Tierlaute zu hören sind!"),
+          duration: const Duration(seconds: 5),
+          backgroundColor: Colors.red[900],
+          action: SnackBarAction(
+            label: "OK",
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+    } else {
+      // Ghost Mode deaktiviert
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("✅ Normal Mode"),
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+
     HapticFeedback.mediumImpact();
   }
 
@@ -558,7 +526,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          isGhost ? "GHOST MODE" : "WEIDMANNSHEIL",
+          isGhost ? "GHOST MODE" : "WAIDMANNSHEIL",
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,

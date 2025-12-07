@@ -310,13 +310,38 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  // Berechnet die gesamte zurückgelegte Distanz entlang des Tracking-Pfads
+  double _calculateTrackingDistance() {
+    if (_trackingPath.length < 2) return 0.0;
+
+    double totalDistance = 0.0;
+    for (int i = 0; i < _trackingPath.length - 1; i++) {
+      totalDistance += Geolocator.distanceBetween(
+        _trackingPath[i].latitude,
+        _trackingPath[i].longitude,
+        _trackingPath[i + 1].latitude,
+        _trackingPath[i + 1].longitude,
+      );
+    }
+    return totalDistance;
+  }
+
   // --- HAUPT DIALOG (JETZT MIT FOTO) ---
   void _addEntryDialog(bool isKill, {bool isTrackingFinish = false, Map<String, dynamic>? envData}) {
-    String note = isTrackingFinish ? "Nachsuche: ${_trackingPath.length} Punkte" : "";
+    String note = "";
+    if (isTrackingFinish) {
+      final distanceMeters = _calculateTrackingDistance();
+      if (distanceMeters < 1000) {
+        note = "Nachsuche: ${distanceMeters.toInt()}m zurückgelegt, ${_trackingPath.length} Markierungen";
+      } else {
+        note = "Nachsuche: ${(distanceMeters / 1000).toStringAsFixed(2)}km zurückgelegt, ${_trackingPath.length} Markierungen";
+      }
+    }
+
     String animal = "Hirsch";
     final textColor = widget.isGhostMode ? Colors.red : Colors.black;
     final dialogBg = widget.isGhostMode ? Colors.grey[900] : Colors.white;
-    
+
     // Reset temp image
     _tempImage = null;
 
