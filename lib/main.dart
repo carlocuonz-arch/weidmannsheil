@@ -247,9 +247,26 @@ class _DashboardPageState extends State<DashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isGhost ? "GHOST MODE" : "Weidmannsheil"),
+        title: Text(
+          isGhost ? "GHOST MODE" : "WEIDMANNSHEIL",
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2.0,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                blurRadius: 10.0,
+                color: Colors.black45,
+                offset: Offset(2.0, 2.0),
+              ),
+            ],
+          ),
+        ),
         backgroundColor: isGhost ? Colors.black : Colors.green[800],
         centerTitle: true,
+        toolbarHeight: 70,
+        elevation: 8,
       ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
