@@ -310,13 +310,38 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  // Berechnet die gesamte zurückgelegte Distanz entlang des Tracking-Pfads
+  double _calculateTrackingDistance() {
+    if (_trackingPath.length < 2) return 0.0;
+
+    double totalDistance = 0.0;
+    for (int i = 0; i < _trackingPath.length - 1; i++) {
+      totalDistance += Geolocator.distanceBetween(
+        _trackingPath[i].latitude,
+        _trackingPath[i].longitude,
+        _trackingPath[i + 1].latitude,
+        _trackingPath[i + 1].longitude,
+      );
+    }
+    return totalDistance;
+  }
+
   // --- HAUPT DIALOG (JETZT MIT FOTO) ---
   void _addEntryDialog(bool isKill, {bool isTrackingFinish = false, Map<String, dynamic>? envData}) {
-    String note = isTrackingFinish ? "Nachsuche: ${_trackingPath.length} Punkte" : "";
+    String note = "";
+    if (isTrackingFinish) {
+      final distanceMeters = _calculateTrackingDistance();
+      if (distanceMeters < 1000) {
+        note = "Nachsuche: ${distanceMeters.toInt()}m zurückgelegt, ${_trackingPath.length} Markierungen";
+      } else {
+        note = "Nachsuche: ${(distanceMeters / 1000).toStringAsFixed(2)}km zurückgelegt, ${_trackingPath.length} Markierungen";
+      }
+    }
+
     String animal = "Hirsch";
     final textColor = widget.isGhostMode ? Colors.red : Colors.black;
     final dialogBg = widget.isGhostMode ? Colors.grey[900] : Colors.white;
-    
+
     // Reset temp image
     _tempImage = null;
 
@@ -452,6 +477,229 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
+  // --- DETAIL ANSICHT FÜR NOTIZ ---
+  void _showNoteDetails(MapEntry entry) {
+    final isGhost = widget.isGhostMode;
+    final textColor = isGhost ? Colors.white : Colors.black87;
+    final dialogBg = isGhost ? Colors.grey[900] : Colors.white;
+    final accentColor = entry.isKill ? Colors.red : Colors.green[700];
+
+    final dateStr = DateFormat('dd.MM.yyyy, HH:mm').format(entry.timestamp);
+    final weatherDisplay = entry.weather.isEmpty ? "Keine Daten" : entry.weather;
+    final temp = weatherDisplay.contains(',') ? weatherDisplay.split(',')[0] : weatherDisplay;
+    final wind = weatherDisplay.contains(',') ? weatherDisplay.split(',')[1].trim() : "Keine Daten";
+    final altDisplay = entry.altitude == 0.0 ? "Unbekannt" : "${entry.altitude.toInt()}m ü. NN";
+
+    // Distanz zum aktuellen Standort berechnen
+    final distance = Geolocator.distanceBetween(
+      _currentPosition.latitude,
+      _currentPosition.longitude,
+      entry.position.latitude,
+      entry.position.longitude,
+    );
+    final distanceStr = distance < 1000 ? "${distance.toInt()}m" : "${(distance / 1000).toStringAsFixed(2)}km";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: dialogBg,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: SingleChildScrollView(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: accentColor!, width: 3),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Icon(entry.isKill ? Icons.gps_fixed : Icons.visibility,
+                           color: accentColor, size: 32),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.isKill ? "ABSCHUSS" : "SICHTUNG",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: accentColor,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            Text(
+                              entry.animal,
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, color: textColor),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Foto (falls vorhanden)
+                  if (entry.imagePath != null && File(entry.imagePath!).existsSync())
+                    GestureDetector(
+                      onTap: () => _showFullImage(entry.imagePath!),
+                      child: Container(
+                        width: double.infinity,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: accentColor, width: 2),
+                          image: DecorationImage(
+                            image: FileImage(File(entry.imagePath!)),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        child: Align(
+                          alignment: Alignment.bottomRight,
+                          child: Container(
+                            margin: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.zoom_in, color: Colors.white, size: 16),
+                                SizedBox(width: 4),
+                                Text("Tippen für Vollbild",
+                                     style: TextStyle(color: Colors.white, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  if (entry.imagePath != null && File(entry.imagePath!).existsSync())
+                    const SizedBox(height: 20),
+
+                  // Zeitstempel
+                  _buildDetailRow(Icons.access_time, "Zeitpunkt", dateStr, textColor),
+                  const SizedBox(height: 12),
+
+                  // Distanz
+                  _buildDetailRow(Icons.near_me, "Entfernung", distanceStr, textColor),
+                  const SizedBox(height: 12),
+
+                  // Position
+                  _buildDetailRow(Icons.location_on, "Position",
+                                  "${entry.position.latitude.toStringAsFixed(5)}, ${entry.position.longitude.toStringAsFixed(5)}",
+                                  textColor),
+                  const SizedBox(height: 12),
+
+                  // Höhe
+                  _buildDetailRow(Icons.terrain, "Höhe", altDisplay, textColor),
+                  const SizedBox(height: 12),
+
+                  // Temperatur
+                  _buildDetailRow(Icons.thermostat, "Temperatur", temp, textColor),
+                  const SizedBox(height: 12),
+
+                  // Wind
+                  _buildDetailRow(Icons.air, "Wind", wind, textColor),
+
+                  // Notiz
+                  if (entry.note.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Divider(color: textColor.withOpacity(0.3)),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.notes, color: textColor.withOpacity(0.7), size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Notiz",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: textColor.withOpacity(0.7),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                entry.note,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: textColor,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value, Color textColor) {
+    return Row(
+      children: [
+        Icon(icon, color: textColor.withOpacity(0.7), size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: textColor.withOpacity(0.7),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: textColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isGhost = widget.isGhostMode;
@@ -541,7 +789,7 @@ class _MapPageState extends State<MapPage> {
                   ? Center(child: Text("Logbuch leer", style: TextStyle(color: isGhost ? Colors.grey : Colors.grey[700])))
                   : ListView.builder(
                       itemCount: _entries.length,
-                      padding: const EdgeInsets.only(top: 0, bottom: 300),
+                      padding: const EdgeInsets.only(top: 0, bottom: 10),
                       physics: const BouncingScrollPhysics(), // Verhindert Konflikte mit Swipe-Gesten
                       itemBuilder: (context, index) {
                         return Dismissible(
@@ -568,7 +816,10 @@ class _MapPageState extends State<MapPage> {
                             padding: const EdgeInsets.only(right: 20),
                             child: const Icon(Icons.delete, color: Colors.white, size: 32)
                           ),
-                          child: _buildLogCard(_entries[index], isGhost)
+                          child: GestureDetector(
+                            onTap: () => _showNoteDetails(_entries[index]),
+                            child: _buildLogCard(_entries[index], isGhost),
+                          )
                         );
                       },
                     ),
@@ -586,16 +837,118 @@ class _MapPageState extends State<MapPage> {
                     SizedBox(width: double.infinity, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green[800], padding: const EdgeInsets.all(15)), onPressed: _finishTracking, icon: const Icon(Icons.check_circle, size: 30), label: const Text("GEFUNDEN & BEENDEN", style: TextStyle(fontSize: 18, color: Colors.white)))),
                   ])),
             ),
+
+          // --- BOTTOM ACTION TOOLBAR (ersetzt FloatingActionButtons) ---
+          if (!_isTracking)
+            Container(
+              decoration: BoxDecoration(
+                color: isGhost ? Colors.grey[900] : Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 10,
+                    offset: Offset(0, -3),
+                  ),
+                ],
+                border: Border(
+                  top: BorderSide(
+                    color: isGhost ? Colors.red.withOpacity(0.5) : Colors.green,
+                    width: 2,
+                  ),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Nachsuche Button
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.pets,
+                      label: "Nachsuche",
+                      color: Colors.orange[800]!,
+                      onPressed: _toggleTracking,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Sichtung Button
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.visibility,
+                      label: "Sichtung",
+                      color: isGhost ? Colors.grey[700]! : Colors.green[700]!,
+                      onPressed: () => _addEntryDialog(false),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Abschuss Button
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.gps_fixed,
+                      label: "Abschuss",
+                      color: Colors.red[900]!,
+                      onPressed: () => _addEntryDialog(true),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Tracking Abbrechen Button (wenn aktiv)
+          if (_isTracking)
+            Container(
+              color: isGhost ? Colors.grey[900] : Colors.red[50],
+              padding: const EdgeInsets.only(bottom: 10, left: 10, right: 10),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[700],
+                    padding: const EdgeInsets.all(12),
+                  ),
+                  onPressed: _toggleTracking,
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  label: const Text("Abbrechen", style: TextStyle(color: Colors.white, fontSize: 16)),
+                ),
+              ),
+            ),
         ],
       ),
-      
-      floatingActionButton: _isTracking 
-          ? FloatingActionButton(backgroundColor: Colors.grey, onPressed: _toggleTracking, child: const Icon(Icons.close))
-          : Column(mainAxisAlignment: MainAxisAlignment.end, children: [FloatingActionButton.extended(heroTag: "track", backgroundColor: Colors.orange[800], onPressed: _toggleTracking, icon: const Icon(Icons.pets, color: Colors.white), label: const Text("Nachsuche", style: TextStyle(color: Colors.white))), const SizedBox(height: 15), FloatingActionButton.extended(heroTag: "btn1", backgroundColor: isGhost ? Colors.grey[800] : Colors.green[700], onPressed: () => _addEntryDialog(false), icon: const Icon(Icons.visibility, color: Colors.white), label: const Text("Sichtung", style: TextStyle(color: Colors.white))), const SizedBox(height: 15), FloatingActionButton.extended(heroTag: "btn2", backgroundColor: Colors.red[900], onPressed: () => _addEntryDialog(true), icon: const Icon(Icons.gps_fixed, color: Colors.white), label: const Text("Abschuss", style: TextStyle(color: Colors.white)))]),
     );
   }
   
   Widget _trackingBtn(String label, IconData icon, Color color, VoidCallback onTap) { return Column(children: [ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: const CircleBorder(), padding: const EdgeInsets.all(20), elevation: 5), onPressed: onTap, child: Icon(icon, color: color, size: 30)), const SizedBox(height: 5), Text(label, style: const TextStyle(fontWeight: FontWeight.bold))]); }
+
+  // --- SEXY ACTION BUTTON FÜR BOTTOM TOOLBAR ---
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 4,
+      ),
+      onPressed: onPressed,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 24),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
 
   // --- KOMPAKTES DESIGN (MIT FOTO) ---
   Widget _buildLogCard(MapEntry e, bool isGhost) {
