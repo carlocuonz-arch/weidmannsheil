@@ -77,16 +77,21 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
     }
   }
 
-  Future<void> _toggleGhostMode() async {
+  Future<void> _toggleGhostMode(BuildContext dialogContext) async {
+    print("🎯 _toggleGhostMode aufgerufen! Aktueller Ghost Mode: $_isGhostMode");
+
     if (!_isGhostMode) {
       // Ghost Mode aktivieren - zuerst Permission prüfen
+      print("🔍 Prüfe Permission...");
       try {
         final bool hasPermission = await platform.invokeMethod('hasDoNotDisturbPermission');
+        print("✅ Permission Status: $hasPermission");
 
         if (!hasPermission) {
+          print("⚠️ Keine Permission - zeige Dialog");
           // Keine Permission - User auffordern
           final shouldRequest = await showDialog<bool>(
-            context: context,
+            context: dialogContext,
             builder: (context) => AlertDialog(
               title: const Text("Berechtigung erforderlich"),
               content: const Text(
@@ -107,29 +112,43 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
           );
 
           if (shouldRequest == true) {
+            print("📱 Öffne Einstellungen für Permission...");
             await platform.invokeMethod('requestDoNotDisturbPermission');
           }
+          print("❌ Permission-Flow abgebrochen oder Dialog geschlossen");
           return; // Nicht weiter fortfahren
         }
       } catch (e) {
-        print("Fehler beim Prüfen der Permission: $e");
+        print("❌ FEHLER beim Prüfen der Permission: $e");
+        ScaffoldMessenger.of(dialogContext).showSnackBar(
+          SnackBar(
+            content: Text("Fehler: $e"),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
       }
     }
 
+    print("🔄 Ändere Ghost Mode Status...");
     setState(() {
       _isGhostMode = !_isGhostMode;
     });
 
     // Native Ringer-Kontrolle aufrufen
+    print("📞 Rufe setGhostMode auf mit enable: $_isGhostMode");
     try {
       final bool success = await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+      print("✅ setGhostMode Ergebnis: $success");
 
       if (!success && _isGhostMode) {
+        print("⚠️ Ghost Mode konnte nicht aktiviert werden!");
         // Fehlgeschlagen - zurücksetzen
         setState(() {
           _isGhostMode = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(dialogContext).showSnackBar(
           const SnackBar(
             content: Text("❌ Ghost Mode konnte nicht aktiviert werden.\nBitte Berechtigung in den Einstellungen erteilen."),
             duration: Duration(seconds: 4),
@@ -140,18 +159,28 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       }
 
       // Status nach dem Toggle prüfen
+      print("🔄 Prüfe Ringer Status...");
       await _checkRingerStatus();
     } catch (e) {
-      print("Fehler beim Setzen des Ghost Mode: $e");
+      print("❌ SCHWERER FEHLER beim Setzen des Ghost Mode: $e");
       setState(() {
         _isGhostMode = false;
       });
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        SnackBar(
+          content: Text("Kritischer Fehler: $e"),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
       return;
     }
 
+    print("🎉 Ghost Mode erfolgreich geändert zu: $_isGhostMode");
+
     if (_isGhostMode) {
       // Ghost Mode aktiviert
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
         SnackBar(
           content: const Text("🦌 GHOST MODE AKTIVIERT\n🔕 Anrufe stumm | 🔊 Tierlaute aktiv"),
           duration: const Duration(seconds: 2),
@@ -160,7 +189,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       );
     } else {
       // Ghost Mode deaktiviert
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
         const SnackBar(
           content: Text("✅ NORMAL MODE"),
           duration: Duration(seconds: 1),
@@ -190,7 +219,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
 class DashboardPage extends StatefulWidget {
   final bool isGhostMode;
   final String ringerStatus;
-  final VoidCallback toggleMode;
+  final Function(BuildContext) toggleMode;
 
   const DashboardPage({super.key, required this.isGhostMode, required this.ringerStatus, required this.toggleMode});
 
@@ -827,7 +856,10 @@ class _DashboardPageState extends State<DashboardPage> {
             // --- HAUPT BUTTON ---
             Expanded(
               child: GestureDetector(
-                onTap: widget.toggleMode,
+                onTap: () {
+                  print("🖱️ JAGD STARTEN Button geklickt!");
+                  widget.toggleMode(context);
+                },
                 child: Container(
                   decoration: BoxDecoration(
                     color: isGhost ? Colors.red.withOpacity(0.1) : Colors.green[100],
