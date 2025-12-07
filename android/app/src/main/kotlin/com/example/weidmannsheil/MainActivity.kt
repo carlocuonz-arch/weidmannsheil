@@ -79,12 +79,25 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun getRingerMode(): String {
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        return when (audioManager.ringerMode) {
-            AudioManager.RINGER_MODE_SILENT -> "SILENT"
-            AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
-            AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
-            else -> "UNKNOWN"
+        return try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager == null) {
+                android.util.Log.e("MainActivity", "AudioManager ist null in getRingerMode!")
+                return "UNKNOWN"
+            }
+
+            val mode = when (audioManager.ringerMode) {
+                AudioManager.RINGER_MODE_SILENT -> "SILENT"
+                AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
+                AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
+                else -> "UNKNOWN"
+            }
+
+            android.util.Log.d("MainActivity", "getRingerMode: $mode")
+            mode
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "FEHLER in getRingerMode: ${e.message}", e)
+            "UNKNOWN"
         }
     }
 }
