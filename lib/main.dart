@@ -80,57 +80,6 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   Future<void> _toggleGhostMode(BuildContext dialogContext) async {
     print("🎯 _toggleGhostMode aufgerufen! Aktueller Ghost Mode: $_isGhostMode");
 
-    if (!_isGhostMode) {
-      // Ghost Mode aktivieren - zuerst Permission prüfen
-      print("🔍 Prüfe Permission...");
-      try {
-        final bool hasPermission = await platform.invokeMethod('hasDoNotDisturbPermission');
-        print("✅ Permission Status: $hasPermission");
-
-        if (!hasPermission) {
-          print("⚠️ Keine Permission - zeige Dialog");
-          // Keine Permission - User auffordern
-          final shouldRequest = await showDialog<bool>(
-            context: dialogContext,
-            builder: (context) => AlertDialog(
-              title: const Text("Berechtigung erforderlich"),
-              content: const Text(
-                "Um Anrufe stumm zu schalten, benötigt Waidmannsheil die Berechtigung für \"Nicht stören\".\n\n"
-                "Tippen Sie auf OK, um zu den Einstellungen zu gelangen und die Berechtigung zu erteilen."
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text("Abbrechen"),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text("OK"),
-                ),
-              ],
-            ),
-          );
-
-          if (shouldRequest == true) {
-            print("📱 Öffne Einstellungen für Permission...");
-            await platform.invokeMethod('requestDoNotDisturbPermission');
-          }
-          print("❌ Permission-Flow abgebrochen oder Dialog geschlossen");
-          return; // Nicht weiter fortfahren
-        }
-      } catch (e) {
-        print("❌ FEHLER beim Prüfen der Permission: $e");
-        ScaffoldMessenger.of(dialogContext).showSnackBar(
-          SnackBar(
-            content: Text("Fehler: $e"),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 4),
-          ),
-        );
-        return;
-      }
-    }
-
     print("🔄 Ändere Ghost Mode Status...");
     setState(() {
       _isGhostMode = !_isGhostMode;
@@ -139,36 +88,20 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
     // Native Ringer-Kontrolle aufrufen
     print("📞 Rufe setGhostMode auf mit enable: $_isGhostMode");
     try {
-      final bool success = await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
-      print("✅ setGhostMode Ergebnis: $success");
-
-      if (!success && _isGhostMode) {
-        print("⚠️ Ghost Mode konnte nicht aktiviert werden!");
-        // Fehlgeschlagen - zurücksetzen
-        setState(() {
-          _isGhostMode = false;
-        });
-        ScaffoldMessenger.of(dialogContext).showSnackBar(
-          const SnackBar(
-            content: Text("❌ Ghost Mode konnte nicht aktiviert werden.\nBitte Berechtigung in den Einstellungen erteilen."),
-            duration: Duration(seconds: 4),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
+      await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+      print("✅ setGhostMode erfolgreich aufgerufen");
 
       // Status nach dem Toggle prüfen
       print("🔄 Prüfe Ringer Status...");
       await _checkRingerStatus();
     } catch (e) {
-      print("❌ SCHWERER FEHLER beim Setzen des Ghost Mode: $e");
+      print("❌ FEHLER beim Setzen des Ghost Mode: $e");
       setState(() {
         _isGhostMode = false;
       });
       ScaffoldMessenger.of(dialogContext).showSnackBar(
         SnackBar(
-          content: Text("Kritischer Fehler: $e"),
+          content: Text("Fehler: $e"),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 4),
         ),
