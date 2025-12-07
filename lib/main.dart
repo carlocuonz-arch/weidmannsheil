@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -330,109 +331,151 @@ class _DashboardPageState extends State<DashboardPage> {
     Widget forecastWidget;
     try {
       final daily = _fullWeatherData!['daily'];
-      final dates = daily['time'] as List;
+      if (daily == null) {
+        throw Exception("Keine täglichen Wetterdaten verfügbar");
+      }
+
+      final dates = daily['time'] as List?;
+      if (dates == null || dates.isEmpty) {
+        throw Exception("Keine Zeitdaten verfügbar");
+      }
 
       forecastWidget = Column(
-        children: List.generate(3, (index) {
-          final date = DateTime.parse(dates[index]);
-          final tempMax = daily['temperature_2m_max'][index];
-          final tempMin = daily['temperature_2m_min'][index];
-          final weatherCode = daily['weather_code'][index];
-          final windSpeed = daily['wind_speed_10m_max'][index];
-          final windDir = _getWindDirection(daily['wind_direction_10m_dominant'][index]);
-          final sunrise = daily['sunrise'][index].toString().split('T').last;
-          final sunset = daily['sunset'][index].toString().split('T').last;
+        children: List.generate(math.min(3, dates.length), (index) {
+          try {
+            final date = DateTime.parse(dates[index].toString());
+            final tempMax = daily['temperature_2m_max']?[index] ?? 0;
+            final tempMin = daily['temperature_2m_min']?[index] ?? 0;
+            final weatherCode = daily['weather_code']?[index] ?? 0;
+            final windSpeed = daily['wind_speed_10m_max']?[index] ?? 0;
+            final windDirDeg = daily['wind_direction_10m_dominant']?[index] ?? 0;
+            final windDir = _getWindDirection(windDirDeg);
+            final sunriseRaw = daily['sunrise']?[index]?.toString() ?? "";
+            final sunsetRaw = daily['sunset']?[index]?.toString() ?? "";
+            final sunrise = sunriseRaw.contains('T') ? sunriseRaw.split('T').last : sunriseRaw;
+            final sunset = sunsetRaw.contains('T') ? sunsetRaw.split('T').last : sunsetRaw;
 
-          final dayName = index == 0 ? "Heute" : index == 1 ? "Morgen" : DateFormat('EEEE', 'de_DE').format(date);
-          final dateStr = DateFormat('dd.MM.').format(date);
+            String dayName;
+            if (index == 0) {
+              dayName = "Heute";
+            } else if (index == 1) {
+              dayName = "Morgen";
+            } else {
+              dayName = DateFormat('EEEE').format(date);
+            }
+            final dateStr = DateFormat('dd.MM.').format(date);
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isGhost ? Colors.grey[800] : Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: index == 0 ? (isGhost ? Colors.red : Colors.green) : Colors.transparent,
-                width: 2,
+            return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isGhost ? Colors.grey[800] : Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: index == 0 ? (isGhost ? Colors.red : Colors.green) : Colors.transparent,
+                  width: 2,
+                ),
               ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          dayName,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: textColor,
-                          ),
-                        ),
-                        Text(
-                          dateStr,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: textColor.withOpacity(0.6),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Icon(
-                          _getWeatherIcon(weatherCode),
-                          color: isGhost ? Colors.red : Colors.orange,
-                          size: 32,
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              "$tempMax°",
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dayName,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: textColor,
                             ),
-                            Text(
-                              "$tempMin°",
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.blue,
-                              ),
+                          ),
+                          Text(
+                            dateStr,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: textColor.withOpacity(0.6),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Divider(color: textColor.withOpacity(0.2)),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildWeatherStat(Icons.air, "$windSpeed km/h $windDir", textColor),
-                    _buildWeatherStat(Icons.wb_twilight, sunrise, textColor),
-                    _buildWeatherStat(Icons.nights_stay, sunset, textColor),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Icon(
+                            _getWeatherIcon(weatherCode),
+                            color: isGhost ? Colors.red : Colors.orange,
+                            size: 32,
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                "${tempMax.round()}°",
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                              Text(
+                                "${tempMin.round()}°",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Divider(color: textColor.withOpacity(0.2)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildWeatherStat(Icons.air, "${windSpeed.round()} km/h $windDir", textColor),
+                      _buildWeatherStat(Icons.wb_twilight, sunrise, textColor),
+                      _buildWeatherStat(Icons.nights_stay, sunset, textColor),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          } catch (e) {
+            print("Fehler bei Tag $index: $e");
+            return SizedBox.shrink();
+          }
+        }).where((widget) => widget is! SizedBox).toList(),
       );
     } catch (e) {
-      forecastWidget = Text("Fehler beim Laden der Vorhersage", style: TextStyle(color: textColor));
+      print("Fehler beim Aufbau der Vorhersage: $e");
+      forecastWidget = Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.orange),
+            const SizedBox(height: 16),
+            Text(
+              "Fehler beim Laden der Vorhersage",
+              style: TextStyle(color: textColor, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Bitte versuchen Sie es später erneut",
+              style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
     }
 
     showDialog(
