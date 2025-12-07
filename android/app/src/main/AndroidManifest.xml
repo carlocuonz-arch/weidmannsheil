@@ -5,6 +5,9 @@
 <uses-permission android:name="android.permission.CAMERA" />
 <uses-permission android:name="android.permission.FLASHLIGHT" />
 <uses-permission android:name="android.permission.VIBRATE"/>
+<!-- Ghost Mode: Silent Mode Permissions -->
+<uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <application
         android:label="weidmannsheil"
         android:name="${applicationName}"
