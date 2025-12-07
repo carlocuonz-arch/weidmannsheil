@@ -57,17 +57,23 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   @override
   void initState() {
     super.initState();
-    _checkRingerStatus();
+    // Status nach dem ersten Frame prüfen, nicht sofort
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkRingerStatus();
+    });
   }
 
   Future<void> _checkRingerStatus() async {
     try {
       final String status = await platform.invokeMethod('getRingerMode');
-      setState(() {
-        _ringerStatus = status;
-      });
+      if (mounted) {
+        setState(() {
+          _ringerStatus = status;
+        });
+      }
     } catch (e) {
       print("Fehler beim Abrufen des Ringer-Status: $e");
+      // Fehler nicht weiter behandeln - App soll trotzdem funktionieren
     }
   }
 
