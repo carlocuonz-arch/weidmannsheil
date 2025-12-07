@@ -232,10 +232,11 @@ class _DashboardPageState extends State<DashboardPage> {
           tmpSet = rawSunset.contains('T') ? rawSunset.split('T').last : rawSunset;
         } catch (e) { print("Sonne Fehler: $e"); }
 
-        // 3. Mond (Dummy-Werte, damit UI nicht kaputt geht)
-        String tmpMoonTxt = "--";
-        String tmpMoonSub = "Keine Daten";
-        IconData tmpMoonIco = Icons.nightlight_round;
+        // 3. Mond (Phasenberechnung)
+        final moonData = _calculateMoonPhase();
+        String tmpMoonTxt = moonData['text'];
+        String tmpMoonSub = moonData['subText'];
+        IconData tmpMoonIco = moonData['icon'];
 
         setState(() {
           _weatherTemp = tmpTemp;
@@ -288,6 +289,63 @@ class _DashboardPageState extends State<DashboardPage> {
     if (code >= 71 && code <= 77) return "Schnee";
     if (code >= 95) return "Gewitter";
     return "Bewölkt";
+  }
+
+  // Mondphasenberechnung
+  Map<String, dynamic> _calculateMoonPhase() {
+    final now = DateTime.now();
+    // Referenz: 6. Januar 2000, 18:14 UTC war Neumond
+    final knownNewMoon = DateTime.utc(2000, 1, 6, 18, 14);
+    final daysSinceNew = now.difference(knownNewMoon).inMilliseconds / (1000 * 60 * 60 * 24);
+    final synodicMonth = 29.53058867; // Länge eines synodischen Monats in Tagen
+    final phase = (daysSinceNew % synodicMonth) / synodicMonth;
+
+    String text;
+    String subText;
+    IconData icon;
+
+    if (phase < 0.03 || phase >= 0.97) {
+      text = "●";
+      subText = "Neumond";
+      icon = Icons.brightness_1;
+    } else if (phase < 0.22) {
+      text = "☽";
+      subText = "Zunehmend";
+      icon = Icons.nightlight;
+    } else if (phase < 0.28) {
+      text = "◐";
+      subText = "Erstes Viertel";
+      icon = Icons.brightness_2;
+    } else if (phase < 0.47) {
+      text = "◑";
+      subText = "Zunehmend";
+      icon = Icons.brightness_3;
+    } else if (phase < 0.53) {
+      text = "○";
+      subText = "Vollmond";
+      icon = Icons.brightness_1_outlined;
+    } else if (phase < 0.72) {
+      text = "◐";
+      subText = "Abnehmend";
+      icon = Icons.brightness_3;
+    } else if (phase < 0.78) {
+      text = "◑";
+      subText = "Letztes Viertel";
+      icon = Icons.brightness_2;
+    } else {
+      text = "☾";
+      subText = "Abnehmend";
+      icon = Icons.nightlight_round;
+    }
+
+    // Beleuchtungsgrad berechnen
+    final illumination = (0.5 * (1 - math.cos(2 * math.pi * phase)) * 100).round();
+
+    return {
+      'text': text,
+      'subText': '$subText $illumination%',
+      'icon': icon,
+    };
   }
 
   // --- WETTER DETAIL DIALOG (3-TAGE-VORHERSAGE) ---
