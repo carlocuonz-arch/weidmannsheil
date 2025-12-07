@@ -64,7 +64,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
 
           // Stumm schalten (Lautstärke auf 0 setzen)
           // Dies setzt die System-Lautstärke auf 0, aber Medien (Tierlaute) funktionieren weiterhin
-          await _volumeController.setVolume(0);
+          _volumeController.setVolume(0);
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -91,7 +91,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
         try {
           // Vorherige Lautstärke wiederherstellen (oder 0.5 als Standard)
           final volumeToRestore = _previousVolume ?? 0.5;
-          await _volumeController.setVolume(volumeToRestore);
+          _volumeController.setVolume(volumeToRestore);
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -326,6 +326,115 @@ class _DashboardPageState extends State<DashboardPage> {
     final textColor = isGhost ? Colors.white : Colors.black87;
     final dialogBg = isGhost ? Colors.grey[900] : Colors.white;
 
+    // Wetter-Karten aufbauen
+    Widget forecastWidget;
+    try {
+      final daily = _fullWeatherData!['daily'];
+      final dates = daily['time'] as List;
+
+      forecastWidget = Column(
+        children: List.generate(3, (index) {
+          final date = DateTime.parse(dates[index]);
+          final tempMax = daily['temperature_2m_max'][index];
+          final tempMin = daily['temperature_2m_min'][index];
+          final weatherCode = daily['weather_code'][index];
+          final windSpeed = daily['wind_speed_10m_max'][index];
+          final windDir = _getWindDirection(daily['wind_direction_10m_dominant'][index]);
+          final sunrise = daily['sunrise'][index].toString().split('T').last;
+          final sunset = daily['sunset'][index].toString().split('T').last;
+
+          final dayName = index == 0 ? "Heute" : index == 1 ? "Morgen" : DateFormat('EEEE', 'de_DE').format(date);
+          final dateStr = DateFormat('dd.MM.').format(date);
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isGhost ? Colors.grey[800] : Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: index == 0 ? (isGhost ? Colors.red : Colors.green) : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          dayName,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        Text(
+                          dateStr,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textColor.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Icon(
+                          _getWeatherIcon(weatherCode),
+                          color: isGhost ? Colors.red : Colors.orange,
+                          size: 32,
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              "$tempMax°",
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                            Text(
+                              "$tempMin°",
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Divider(color: textColor.withOpacity(0.2)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildWeatherStat(Icons.air, "$windSpeed km/h $windDir", textColor),
+                    _buildWeatherStat(Icons.wb_twilight, sunrise, textColor),
+                    _buildWeatherStat(Icons.nights_stay, sunset, textColor),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }),
+      );
+    } catch (e) {
+      forecastWidget = Text("Fehler beim Laden der Vorhersage", style: TextStyle(color: textColor));
+    }
+
     showDialog(
       context: context,
       builder: (context) {
@@ -369,114 +478,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
                   const SizedBox(height: 20),
-
-                  // 3-Tage-Vorhersage
-                  try {
-                    final daily = _fullWeatherData!['daily'];
-                    final dates = daily['time'] as List;
-
-                    return Column(
-                      children: List.generate(3, (index) {
-                        final date = DateTime.parse(dates[index]);
-                        final tempMax = daily['temperature_2m_max'][index];
-                        final tempMin = daily['temperature_2m_min'][index];
-                        final weatherCode = daily['weather_code'][index];
-                        final windSpeed = daily['wind_speed_10m_max'][index];
-                        final windDir = _getWindDirection(daily['wind_direction_10m_dominant'][index]);
-                        final sunrise = daily['sunrise'][index].toString().split('T').last;
-                        final sunset = daily['sunset'][index].toString().split('T').last;
-
-                        final dayName = index == 0 ? "Heute" : index == 1 ? "Morgen" : DateFormat('EEEE', 'de_DE').format(date);
-                        final dateStr = DateFormat('dd.MM.').format(date);
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 16),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: isGhost ? Colors.grey[800] : Colors.grey[100],
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: index == 0 ? (isGhost ? Colors.red : Colors.green) : Colors.transparent,
-                              width: 2,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        dayName,
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: textColor,
-                                        ),
-                                      ),
-                                      Text(
-                                        dateStr,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: textColor.withOpacity(0.6),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        _getWeatherIcon(weatherCode),
-                                        color: isGhost ? Colors.red : Colors.orange,
-                                        size: 32,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                            "$tempMax°",
-                                            style: TextStyle(
-                                              fontSize: 24,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.orange,
-                                            ),
-                                          ),
-                                          Text(
-                                            "$tempMin°",
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              color: Colors.blue,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Divider(color: textColor.withOpacity(0.2)),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                children: [
-                                  _buildWeatherStat(Icons.air, "$windSpeed km/h $windDir", textColor),
-                                  _buildWeatherStat(Icons.wb_twilight, sunrise, textColor),
-                                  _buildWeatherStat(Icons.nights_stay, sunset, textColor),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                    );
-                  } catch (e) {
-                    return Text("Fehler beim Laden der Vorhersage", style: TextStyle(color: textColor));
-                  },
+                  // 3-Tage-Vorhersage Widget
+                  forecastWidget,
                 ],
               ),
             ),
