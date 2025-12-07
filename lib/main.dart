@@ -80,7 +80,6 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   Future<void> _toggleGhostMode(BuildContext dialogContext) async {
     print("🎯 _toggleGhostMode aufgerufen! Aktueller Ghost Mode: $_isGhostMode");
 
-    print("🔄 Ändere Ghost Mode Status...");
     setState(() {
       _isGhostMode = !_isGhostMode;
     });
@@ -92,45 +91,16 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       print("✅ setGhostMode erfolgreich aufgerufen");
 
       // Status nach dem Toggle prüfen
-      print("🔄 Prüfe Ringer Status...");
       await _checkRingerStatus();
     } catch (e) {
       print("❌ FEHLER beim Setzen des Ghost Mode: $e");
       setState(() {
         _isGhostMode = false;
       });
-      ScaffoldMessenger.of(dialogContext).showSnackBar(
-        SnackBar(
-          content: Text("Fehler: $e"),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 4),
-        ),
-      );
       return;
     }
 
     print("🎉 Ghost Mode erfolgreich geändert zu: $_isGhostMode");
-
-    if (_isGhostMode) {
-      // Ghost Mode aktiviert
-      ScaffoldMessenger.of(dialogContext).showSnackBar(
-        SnackBar(
-          content: const Text("🦌 GHOST MODE AKTIVIERT\n🔕 Anrufe stumm | 🔊 Tierlaute aktiv"),
-          duration: const Duration(seconds: 2),
-          backgroundColor: Colors.red[900],
-        ),
-      );
-    } else {
-      // Ghost Mode deaktiviert
-      ScaffoldMessenger.of(dialogContext).showSnackBar(
-        const SnackBar(
-          content: Text("✅ NORMAL MODE"),
-          duration: Duration(seconds: 1),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-
     HapticFeedback.mediumImpact();
   }
 
@@ -650,6 +620,17 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
         ),
+        actions: [
+          if (isGhost)
+            Padding(
+              padding: const EdgeInsets.only(right: 16.0),
+              child: Icon(
+                Icons.phone_disabled,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+        ],
         backgroundColor: isGhost ? Colors.black : Colors.green[800],
         centerTitle: true,
         toolbarHeight: 70,
@@ -660,40 +641,6 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- RINGER STATUS ANZEIGE (nur im Ghost Mode) ---
-            if (isGhost)
-              Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.red[900],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.withOpacity(0.4),
-                      blurRadius: 10,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.phone_disabled, color: Colors.white, size: 24),
-                    const SizedBox(width: 12),
-                    Text(
-                      "🔕 LAUTLOS-MODUS",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             // --- DASHBOARD ---
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
