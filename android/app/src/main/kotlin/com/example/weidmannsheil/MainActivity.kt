@@ -19,6 +19,10 @@ class MainActivity : FlutterActivity() {
                     setGhostMode(enable)
                     result.success(null)
                 }
+                "getRingerMode" -> {
+                    val status = getRingerMode()
+                    result.success(status)
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -35,6 +39,16 @@ class MainActivity : FlutterActivity() {
         } else {
             // Ghost Mode OFF: Restore normal ringer mode
             audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+        }
+    }
+
+    private fun getRingerMode(): String {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return when (audioManager.ringerMode) {
+            AudioManager.RINGER_MODE_SILENT -> "SILENT"
+            AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
+            AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
+            else -> "UNKNOWN"
         }
     }
 }

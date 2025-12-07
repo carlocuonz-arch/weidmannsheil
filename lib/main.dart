@@ -51,7 +51,25 @@ class WeidmannsheilApp extends StatefulWidget {
 
 class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
   bool _isGhostMode = false;
+  String _ringerStatus = "UNKNOWN";
   static const platform = MethodChannel('com.weidmannsheil/audio');
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRingerStatus();
+  }
+
+  Future<void> _checkRingerStatus() async {
+    try {
+      final String status = await platform.invokeMethod('getRingerMode');
+      setState(() {
+        _ringerStatus = status;
+      });
+    } catch (e) {
+      print("Fehler beim Abrufen des Ringer-Status: $e");
+    }
+  }
 
   Future<void> _toggleGhostMode() async {
     setState(() {
@@ -61,6 +79,8 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
     // Native Ringer-Kontrolle aufrufen
     try {
       await platform.invokeMethod('setGhostMode', {'enable': _isGhostMode});
+      // Status nach dem Toggle prüfen
+      await _checkRingerStatus();
     } catch (e) {
       print("Fehler beim Setzen des Ghost Mode: $e");
     }
@@ -69,7 +89,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       // Ghost Mode aktiviert
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text("🦌 Ghost Mode aktiviert\n📵 Anrufe & Benachrichtigungen stumm\n🔊 Tierlaute aktiv"),
+          content: Text("🦌 Ghost Mode aktiviert\n📵 Ringer: $_ringerStatus\n🔊 Tierlaute aktiv"),
           duration: const Duration(seconds: 3),
           backgroundColor: Colors.red[900],
           action: SnackBarAction(
@@ -82,8 +102,8 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
     } else {
       // Ghost Mode deaktiviert
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("✅ Normal Mode\n🔔 Alle Töne wieder aktiv"),
+        SnackBar(
+          content: Text("✅ Normal Mode\n🔔 Ringer: $_ringerStatus"),
           duration: Duration(seconds: 2),
           backgroundColor: Colors.green,
         ),
@@ -101,6 +121,7 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
       theme: _isGhostMode ? HunterTheme.ghostMode : HunterTheme.normal,
       home: DashboardPage(
         isGhostMode: _isGhostMode,
+        ringerStatus: _ringerStatus,
         toggleMode: _toggleGhostMode,
       ),
     );
@@ -109,9 +130,10 @@ class _WeidmannsheilAppState extends State<WeidmannsheilApp> {
 
 class DashboardPage extends StatefulWidget {
   final bool isGhostMode;
+  final String ringerStatus;
   final VoidCallback toggleMode;
 
-  const DashboardPage({super.key, required this.isGhostMode, required this.toggleMode});
+  const DashboardPage({super.key, required this.isGhostMode, required this.ringerStatus, required this.toggleMode});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -617,6 +639,52 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // --- RINGER STATUS ANZEIGE ---
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: widget.ringerStatus == "SILENT"
+                    ? (isGhost ? Colors.red[900] : Colors.orange[700])
+                    : (widget.ringerStatus == "NORMAL" ? Colors.green[700] : Colors.grey[700]),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: widget.ringerStatus == "SILENT" ? Colors.red : Colors.green,
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (widget.ringerStatus == "SILENT" ? Colors.red : Colors.green).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    widget.ringerStatus == "SILENT" ? Icons.phone_disabled :
+                    widget.ringerStatus == "VIBRATE" ? Icons.vibration :
+                    widget.ringerStatus == "NORMAL" ? Icons.phone_enabled : Icons.help_outline,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    widget.ringerStatus == "SILENT" ? "🔕 HANDY STUMM" :
+                    widget.ringerStatus == "VIBRATE" ? "📳 VIBRATION" :
+                    widget.ringerStatus == "NORMAL" ? "🔔 KLINGELN AN" : "❓ STATUS UNBEKANNT",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             // --- DASHBOARD ---
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
