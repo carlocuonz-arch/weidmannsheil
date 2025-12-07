@@ -34,30 +34,47 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun setGhostMode(enable: Boolean) {
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager == null) {
+                android.util.Log.e("MainActivity", "AudioManager ist null!")
+                return
+            }
 
-        if (enable) {
-            // Ghost Mode ON: Speichere aktuelle Werte und schalte stumm
-            savedRingerMode = audioManager.ringerMode
-            savedRingerVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING)
-            savedNotificationVolume = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
+            if (enable) {
+                // Ghost Mode ON: Speichere aktuelle Werte und schalte stumm
+                savedRingerMode = audioManager.ringerMode
+                savedRingerVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING)
+                savedNotificationVolume = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
 
-            // Setze Ringer Mode auf Silent
-            audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                android.util.Log.d("MainActivity", "Ghost Mode AN - Gespeicherte Werte: ringerMode=$savedRingerMode, ringVol=$savedRingerVolume, notifVol=$savedNotificationVolume")
 
-            // Setze Ringer und Notification Lautstärke auf 0
-            audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
-            audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
+                // Setze Ringer Mode auf Silent
+                audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
 
-            // WICHTIG: STREAM_MUSIC bleibt unberührt für Tierlaute!
+                // Setze Ringer und Notification Lautstärke auf 0
+                audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
+                audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
 
-        } else {
-            // Ghost Mode OFF: Stelle ursprüngliche Werte wieder her
-            audioManager.ringerMode = savedRingerMode
+                android.util.Log.d("MainActivity", "Ghost Mode AN erfolgreich aktiviert")
 
-            // Stelle Lautstärken wieder her
-            audioManager.setStreamVolume(AudioManager.STREAM_RING, savedRingerVolume, 0)
-            audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, savedNotificationVolume, 0)
+                // WICHTIG: STREAM_MUSIC bleibt unberührt für Tierlaute!
+
+            } else {
+                // Ghost Mode OFF: Stelle ursprüngliche Werte wieder her
+                android.util.Log.d("MainActivity", "Ghost Mode AUS - Stelle wieder her: ringerMode=$savedRingerMode, ringVol=$savedRingerVolume, notifVol=$savedNotificationVolume")
+
+                audioManager.ringerMode = savedRingerMode
+
+                // Stelle Lautstärken wieder her
+                audioManager.setStreamVolume(AudioManager.STREAM_RING, savedRingerVolume, 0)
+                audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, savedNotificationVolume, 0)
+
+                android.util.Log.d("MainActivity", "Ghost Mode AUS erfolgreich deaktiviert")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "FEHLER in setGhostMode: ${e.message}", e)
+            e.printStackTrace()
         }
     }
 
