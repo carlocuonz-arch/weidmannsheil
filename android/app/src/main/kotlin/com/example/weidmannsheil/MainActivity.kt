@@ -11,6 +11,7 @@ class MainActivity : FlutterActivity() {
     private var savedRingerVolume = 0
     private var savedNotificationVolume = 0
     private var savedRingerMode = AudioManager.RINGER_MODE_NORMAL
+    private var savedMusicVolume = 0
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -37,27 +38,50 @@ class MainActivity : FlutterActivity() {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         if (enable) {
-            // Ghost Mode ON: Speichere aktuelle Werte und schalte stumm
+            // Ghost Mode ON: Anrufe und Benachrichtigungen stumm, aber Musik/Tierlaute aktiv
+
+            // 1. Speichere aktuelle Werte
             savedRingerMode = audioManager.ringerMode
             savedRingerVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING)
             savedNotificationVolume = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
+            savedMusicVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
-            // Setze Ringer Mode auf Silent
+            // 2. Setze Ringer Mode auf Silent
             audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
 
-            // Setze Ringer und Notification Lautstärke auf 0
+            // 3. Setze Ringer und Notification Lautstärke auf 0 (Anrufe stumm)
             audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
             audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
 
-            // WICHTIG: STREAM_MUSIC bleibt unberührt für Tierlaute!
+            // 4. WICHTIG: Stelle sicher, dass STREAM_MUSIC eine hörbare Lautstärke hat!
+            // Wenn STREAM_MUSIC zu leise ist (< 30% vom Maximum), setze auf 70% vom Maximum
+            val maxMusicVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val currentMusicVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+
+            if (currentMusicVolume < maxMusicVolume * 0.3) {
+                // Setze auf 70% vom Maximum für gute Hörbarkeit der Tierlaute
+                val targetMusicVolume = (maxMusicVolume * 0.7).toInt()
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetMusicVolume, 0)
+                android.util.Log.d("WeidmannsheilAudio",
+                    "STREAM_MUSIC war zu leise ($currentMusicVolume/$maxMusicVolume), " +
+                    "setze auf $targetMusicVolume für Tierlaute")
+            } else {
+                android.util.Log.d("WeidmannsheilAudio",
+                    "STREAM_MUSIC ist OK: $currentMusicVolume/$maxMusicVolume")
+            }
 
         } else {
             // Ghost Mode OFF: Stelle ursprüngliche Werte wieder her
             audioManager.ringerMode = savedRingerMode
 
-            // Stelle Lautstärken wieder her
+            // Stelle alle Lautstärken wieder her
             audioManager.setStreamVolume(AudioManager.STREAM_RING, savedRingerVolume, 0)
             audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, savedNotificationVolume, 0)
+
+            // Stelle auch STREAM_MUSIC wieder her (falls wir ihn verändert haben)
+            if (savedMusicVolume > 0) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVolume, 0)
+            }
         }
     }
 
