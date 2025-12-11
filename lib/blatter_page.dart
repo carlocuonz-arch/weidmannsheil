@@ -11,9 +11,9 @@ class BlatterPage extends StatefulWidget {
 }
 
 class _BlatterPageState extends State<BlatterPage> {
-  // Der Audio-Spieler
+  // Der Audio-Spieler mit explizitem Media-Kontext
   final AudioPlayer _player = AudioPlayer();
-  
+
   // Status-Variablen für unseren Player
   bool _isPlaying = false;
   bool _isLooping = false;
@@ -31,7 +31,23 @@ class _BlatterPageState extends State<BlatterPage> {
   @override
   void initState() {
     super.initState();
-    
+
+    // Setze explizit den Audio-Context auf MEDIA (für Musik/Tierlaute)
+    // Das stellt sicher, dass der STREAM_MUSIC verwendet wird, nicht STREAM_NOTIFICATION
+    _player.setAudioContext(
+      AudioContext(
+        android: AudioContextAndroid(
+          contentType: AndroidContentType.music,
+          usage: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: [AVAudioSessionOptions.mixWithOthers],
+        ),
+      ),
+    );
+
     // Wir hören auf den Player: Wenn der Sound fertig ist, setzen wir den Status zurück
     _player.onPlayerComplete.listen((event) {
       if (!_isLooping) {
