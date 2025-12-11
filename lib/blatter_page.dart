@@ -38,12 +38,11 @@ class _BlatterPageState extends State<BlatterPage> {
       AudioContext(
         android: AudioContextAndroid(
           contentType: AndroidContentType.music,
-          usage: AndroidUsageType.media,
           audioFocus: AndroidAudioFocus.gain,
         ),
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.playback,
-          options: [AVAudioSessionOptions.mixWithOthers],
+          options: {AVAudioSessionOptions.mixWithOthers},
         ),
       ),
     );
