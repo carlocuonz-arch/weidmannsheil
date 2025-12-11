@@ -10,7 +10,6 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.weidmannsheil/audio"
     private var savedRingerVolume = 0
     private var savedNotificationVolume = 0
-    private var savedRingerMode = AudioManager.RINGER_MODE_NORMAL
     private var savedMusicVolume = 0
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -40,20 +39,23 @@ class MainActivity : FlutterActivity() {
         if (enable) {
             // Ghost Mode ON: Anrufe und Benachrichtigungen stumm, aber Musik/Tierlaute aktiv
 
-            // 1. Speichere aktuelle Werte
-            savedRingerMode = audioManager.ringerMode
+            // 1. Speichere aktuelle Werte (OHNE Ringer Mode zu ändern!)
             savedRingerVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING)
             savedNotificationVolume = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
             savedMusicVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
-            // 2. Setze Ringer Mode auf Silent
-            audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+            android.util.Log.d("WeidmannsheilAudio",
+                "Gespeichert - Ring: $savedRingerVolume, Notification: $savedNotificationVolume, Music: $savedMusicVolume")
 
-            // 3. Setze Ringer und Notification Lautstärke auf 0 (Anrufe stumm)
-            audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
+            // 2. Setze Ringer und Notification Lautstärke auf 0 (Anrufe stumm)
+            // FLAG_SHOW_UI = 1 zeigt dem Benutzer die Änderung
+            audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, AudioManager.FLAG_SHOW_UI)
             audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
 
-            // 4. WICHTIG: Stelle sicher, dass STREAM_MUSIC eine hörbare Lautstärke hat!
+            android.util.Log.d("WeidmannsheilAudio",
+                "Ring und Notification auf 0 gesetzt")
+
+            // 3. WICHTIG: Stelle sicher, dass STREAM_MUSIC eine hörbare Lautstärke hat!
             // Wenn STREAM_MUSIC zu leise ist (< 30% vom Maximum), setze auf 70% vom Maximum
             val maxMusicVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
             val currentMusicVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
@@ -61,7 +63,7 @@ class MainActivity : FlutterActivity() {
             if (currentMusicVolume < maxMusicVolume * 0.3) {
                 // Setze auf 70% vom Maximum für gute Hörbarkeit der Tierlaute
                 val targetMusicVolume = (maxMusicVolume * 0.7).toInt()
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetMusicVolume, 0)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetMusicVolume, AudioManager.FLAG_SHOW_UI)
                 android.util.Log.d("WeidmannsheilAudio",
                     "STREAM_MUSIC war zu leise ($currentMusicVolume/$maxMusicVolume), " +
                     "setze auf $targetMusicVolume für Tierlaute")
@@ -72,16 +74,21 @@ class MainActivity : FlutterActivity() {
 
         } else {
             // Ghost Mode OFF: Stelle ursprüngliche Werte wieder her
-            audioManager.ringerMode = savedRingerMode
+
+            android.util.Log.d("WeidmannsheilAudio",
+                "Wiederherstellen - Ring: $savedRingerVolume, Notification: $savedNotificationVolume, Music: $savedMusicVolume")
 
             // Stelle alle Lautstärken wieder her
-            audioManager.setStreamVolume(AudioManager.STREAM_RING, savedRingerVolume, 0)
+            audioManager.setStreamVolume(AudioManager.STREAM_RING, savedRingerVolume, AudioManager.FLAG_SHOW_UI)
             audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, savedNotificationVolume, 0)
 
             // Stelle auch STREAM_MUSIC wieder her (falls wir ihn verändert haben)
             if (savedMusicVolume > 0) {
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVolume, 0)
             }
+
+            android.util.Log.d("WeidmannsheilAudio",
+                "Lautstärken wiederhergestellt")
         }
     }
 
